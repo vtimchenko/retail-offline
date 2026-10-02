@@ -143,13 +143,13 @@ class _SelectionCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Align(
-              child: CircleAvatar(
-                radius: 32,
-                backgroundColor: AppColors.primary,
-                child: Icon(Icons.storefront, size: 32, color: Colors.white),
-              ),
-            ),
+            Align(
+  child: Image.asset(
+    'assets/images/store_selection.png',
+    height: 120,
+    fit: BoxFit.contain,
+  ),
+),
             const SizedBox(height: 20),
             Text(
               AppStrings.storeSelectionTitle,

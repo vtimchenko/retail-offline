@@ -1,0 +1,1710 @@
+[
+    {
+      "nameStore": "ТВ Балаклія Захисників 1",
+      "idStore": "retail_hr_blkl_zhovtneva1"
+    },
+    {
+      "nameStore": "ТВ Бердичів Житомирська 24",
+      "idStore": "retail_zht_brdc_zhytomirskaya24"
+    },
+    {
+      "nameStore": "ТВ Берегове Хмельницького 15",
+      "idStore": "retail_zkp_brgv_khmelnytskoho15"
+    },
+    {
+      "nameStore": "ТВ Березань Шевченків Шлях 125А",
+      "idStore": "retail_ki_brzn_shevchenkiv125"
+    },
+    {
+      "nameStore": "ТВ Березань Шевченківський 128",
+      "idStore": "retail_ki_brzn_shevchenkivskyi143"
+    },
+    {
+      "nameStore": "ТВ Берестин Історична 62",
+      "idStore": "retail_hr_krgr_bilovska62"
+    },
+    {
+      "nameStore": "ТВ Біл Дністр Миколаївська 23/25",
+      "idStore": "retail_od_bldn_mykolaivska23"
+    },
+    {
+      "nameStore": "ТВ Біла Церква Гончара 2",
+      "idStore": "retail_ki_bltc_honchara2"
+    },
+    {
+      "nameStore": "ТВ Біла Церква Добр Батальйонів 3",
+      "idStore": "retail_ki_bltc_dobrobat3"
+    },
+    {
+      "nameStore": "ТВ Біла Церква Нагірна 17",
+      "idStore": "retail_ki_bltc_nagornaya17"
+    },
+    {
+      "nameStore": "ТВ Біла Церква Олександрівський 66",
+      "idStore": "retail_ki_bltc_aleksandrov66"
+    },
+    {
+      "nameStore": "ТВ Біла Церква Ярослава Мудрого 10",
+      "idStore": "retail_ki_bltc_mudrogo10"
+    },
+    {
+      "nameStore": "ТВ Бориспіль Київський Шлях 4",
+      "idStore": "retail_ki_brsp_kievskyshljah4"
+    },
+    {
+      "nameStore": "ТВ Бориспіль Парктаун",
+      "idStore": "retail_ki_brsp_parktawn"
+    },
+    {
+      "nameStore": "ТВ Боярка Садова 4Б",
+      "idStore": "retail_ki_byrk_sadova4"
+    },
+    {
+      "nameStore": "ТВ Бровари Київська 150 А",
+      "idStore": "retail_ki_brvr_kievskaya150"
+    },
+    {
+      "nameStore": "ТВ Бровари Київська 219",
+      "idStore": "retail_ki_brvr_kyivska219"
+    },
+    {
+      "nameStore": "ТВ Бровари Марк Молл",
+      "idStore": "retail_ki_brvr_markmall"
+    },
+    {
+      "nameStore": "ТВ Бровари Незалежності 2",
+      "idStore": "retail_ki_brvr_nezalezhnosti2"
+    },
+    {
+      "nameStore": "ТВ Бровари Окружна 62",
+      "idStore": "retail_ki_brvr_okruzhnaya62"
+    },
+    {
+      "nameStore": "ТВ Бровари Симона Петлюри 22",
+      "idStore": "retail_ki_brvr_symonapetliury22"
+    },
+    {
+      "nameStore": "ТВ Бурштин Калуська 3",
+      "idStore": "retail_if_brsht_kaluska3"
+    },
+    {
+      "nameStore": "ТВ Буча Нове Шосе 52",
+      "idStore": "retail_ki_buch_52noveshosse"
+    },
+    {
+      "nameStore": "ТВ Буча Нове Шосе 8а",
+      "idStore": "retail_ki_buch_noveshosse8"
+    },
+    {
+      "nameStore": "ТВ Васильків Київський шлях 186",
+      "idStore": "retail_ki_vslk_dekabristov184"
+    },
+    {
+      "nameStore": "ТВ Виноградів Комунальна 1",
+      "idStore": "retail_zkp_vngr_komunalna1"
+    },
+    {
+      "nameStore": "ТВ Вишгород Шевченка 2",
+      "idStore": "retail_ki_vsgr_shevchenka2"
+    },
+    {
+      "nameStore": "ТВ Вишгород Шолуденко 13 Б",
+      "idStore": "retail_ki_vsgr_sholudenka13"
+    },
+    {
+      "nameStore": "ТВ Вишневе Європейська 32/1-Б",
+      "idStore": "retail_ki_vshn_yevropeiska32"
+    },
+    {
+      "nameStore": "ТВ Вишневе Молодіжна 32",
+      "idStore": "retail_ki_vshn_molodezhnaya32"
+    },
+    {
+      "nameStore": "ТВ Вишневе Освіти 4",
+      "idStore": "retail_ki_vshn_osvity4"
+    },
+    {
+      "nameStore": "ТВ Вишневе Українки 74 А",
+      "idStore": "retail_ki_vshn_ukrainki74"
+    },
+    {
+      "nameStore": "ТВ Вінниця Батозька 9Б",
+      "idStore": "retail_vn_vinn_batozka9"
+    },
+    {
+      "nameStore": "ТВ Вінниця Гоголя 1",
+      "idStore": "retail_vn_vinn_gogolya1"
+    },
+    {
+      "nameStore": "ТВ Вінниця Зодчих 2А",
+      "idStore": "retail_vn_vinn_zodchih2a"
+    },
+    {
+      "nameStore": "ТВ Вінниця Келецька 118",
+      "idStore": "retail_vn_vinn_keletska118"
+    },
+    {
+      "nameStore": "ТВ Вінниця Космонавтів 49",
+      "idStore": "retail_vn_vinn_kosmonavtov49"
+    },
+    {
+      "nameStore": "ТВ Вінниця Коцюбинського 78Б",
+      "idStore": "retail_vn_vinn_kotsyubinsky78"
+    },
+    {
+      "nameStore": "ТВ Вінниця Хмельницьке шосе 114В",
+      "idStore": "retail_vn_vinn_khmelshose114"
+    },
+    {
+      "nameStore": "ТВ Вінниця Чорновола 29Б",
+      "idStore": "retail_vn_vinn_chornovola29"
+    },
+    {
+      "nameStore": "ТВ Вінниця Шимка 36",
+      "idStore": "retail_vn_vinn_shymka36"
+    },
+    {
+      "nameStore": "ТВ Вінниця Юності 46",
+      "idStore": "retail_vn_vinn_pervozvannoho28"
+    },
+    {
+      "nameStore": "ТВ Вознесенськ Соборності 8",
+      "idStore": "retail_nk_vznsk_sobornosti8"
+    },
+    {
+      "nameStore": "ТВ Володимир Ковельська 71",
+      "idStore": "retail_vl_vlvl_kovalskaya71"
+    },
+    {
+      "nameStore": "ТВ Гадяч Миру 13а",
+      "idStore": "retail_pt_hdch_myru13"
+    },
+    {
+      "nameStore": "ТВ Дніпро Апполо",
+      "idStore": "retail_dp_appolo"
+    },
+    {
+      "nameStore": "ТВ Дніпро Березинська 23А",
+      "idStore": "retail_dp_dnpr_berezanska"
+    },
+    {
+      "nameStore": "ТВ Дніпро Вавилон",
+      "idStore": "retail_dp_dnpr_vavylon"
+    },
+    {
+      "nameStore": "ТВ Дніпро Володимирська 1",
+      "idStore": "retail_dp_dnpr_volodymyrska1"
+    },
+    {
+      "nameStore": "ТВ Дніпро Грушевського 85",
+      "idStore": "retail_dp_dnpr_hrushevskoho85"
+    },
+    {
+      "nameStore": "ТВ Дніпро Зоряний 1Б",
+      "idStore": "retail_dp_dnpr_zorianyi1"
+    },
+    {
+      "nameStore": "ТВ Дніпро Калинова 3",
+      "idStore": "retail_dp_dnpr_kalynova3"
+    },
+    {
+      "nameStore": "ТВ Дніпро Калинова 53Г",
+      "idStore": "retail_dp_dnpr_kalynova53"
+    },
+    {
+      "nameStore": "ТВ Дніпро Кирила Осьмака 43Д",
+      "idStore": "retail_dp_dnpr_20peremohy22"
+    },
+    {
+      "nameStore": "ТВ Дніпро Кодак",
+      "idStore": "retail_dp_dnpr_kodak"
+    },
+    {
+      "nameStore": "ТВ Дніпро Кондратюка 2",
+      "idStore": "retail_dp_dnpr_kondratiuka2"
+    },
+    {
+      "nameStore": "ТВ Дніпро Мазепи 51Б",
+      "idStore": "retail_dp_dnpr_mazepy51"
+    },
+    {
+      "nameStore": "ТВ Дніпро Миру 14А",
+      "idStore": "retail_dp_dnpr_myru14"
+    },
+    {
+      "nameStore": "ТВ Дніпро Наб Перемоги 42ф",
+      "idStore": "retail_dp_dnpr_nabperemohy42"
+    },
+    {
+      "nameStore": "ТВ Дніпро Нагорка",
+      "idStore": "retail_dp_nagorka"
+    },
+    {
+      "nameStore": "ТВ Дніпро Панікахи 61",
+      "idStore": "retail_dp_dnpr_panikahy61"
+    },
+    {
+      "nameStore": "ТВ Дніпро Північнодонецька 1А",
+      "idStore": "retail_dp_dnpr_pivnichnodonet1"
+    },
+    {
+      "nameStore": "ТВ Дніпро Поля 8А",
+      "idStore": "retail_dp_dnpr_polya8"
+    },
+    {
+      "nameStore": "ТВ Дніпро Рудницького 7",
+      "idStore": "retail_dp_dnpr_sholohova7"
+    },
+    {
+      "nameStore": "ТВ Дніпро Свободи 220",
+      "idStore": "retail_dp_dnpr_svobody220"
+    },
+    {
+      "nameStore": "ТВ Дніпро Слави 45",
+      "idStore": "retail_dp_dnpr_slavy45"
+    },
+    {
+      "nameStore": "ТВ Дніпро Терра 118",
+      "idStore": "retail_dp_dnpr_terrakhmelnyts118"
+    },
+    {
+      "nameStore": "ТВ Дніпро Яворницького 100",
+      "idStore": "retail_dp_dnpr_yavornick100"
+    },
+    {
+      "nameStore": "ТВ Дніпро Яворницького 46",
+      "idStore": "retail_dp_dnpr_yavornytskoho46"
+    },
+    {
+      "nameStore": "ТВ Долина Грушевського 17",
+      "idStore": "retail_if_dlna_hrushevskoho17"
+    },
+    {
+      "nameStore": "ТВ Дружківка Пилипенка 84а",
+      "idStore": "retail_dn_drzh_enhelsa82"
+    },
+    {
+      "nameStore": "ТВ Житомир Київська 106",
+      "idStore": "retail_zht_zhtm_kievskaya106"
+    },
+    {
+      "nameStore": "ТВ Житомир Кібальчича 9",
+      "idStore": "retail_zht_zhtm_kibalchicha9"
+    },
+    {
+      "nameStore": "ТВ Житомир Корольова 46",
+      "idStore": "retail_zht_zhtm_korolova46"
+    },
+    {
+      "nameStore": "ТВ Житомир Небесної Сотні 12",
+      "idStore": "retail_zht_zhtm_nebsotni12"
+    },
+    {
+      "nameStore": "ТВ Житомир Океан Плаза",
+      "idStore": "retail_zht_zhtm_okeanplaza"
+    },
+    {
+      "nameStore": "ТВ Житомир Покровська 63",
+      "idStore": "retail_zht_zhtm_pokrovska63"
+    },
+    {
+      "nameStore": "ТВ Житомир Соборний 7/1",
+      "idStore": "retail_zht_zhtm_sobornyi7"
+    },
+    {
+      "nameStore": "ТВ Запоріжжя Бородинська 9",
+      "idStore": "retail_zp_zapr_borodinskaya9"
+    },
+    {
+      "nameStore": "ТВ Запоріжжя Бочарова 3",
+      "idStore": "retail_zp_zapr_bocharova3"
+    },
+    {
+      "nameStore": "ТВ Запоріжжя Руставі 2",
+      "idStore": "retail_zp_zapr_rustavi2"
+    },
+    {
+      "nameStore": "ТВ Запоріжжя Ситова 4А",
+      "idStore": "retail_zp_zapr_sytova4"
+    },
+    {
+      "nameStore": "ТВ Запоріжжя Соборний 222",
+      "idStore": "retail_zp_zapr_222sobornyi"
+    },
+    {
+      "nameStore": "ТВ Запоріжжя Соборний 44",
+      "idStore": "retail_zp_zapr_44sobornyi"
+    },
+    {
+      "nameStore": "ТВ Запоріжжя Україна",
+      "idStore": "retail_zp_zapr_ukraina"
+    },
+    {
+      "nameStore": "ТВ Запоріжжя Українця 27А",
+      "idStore": "retail_zp_zapr_novokuznetska27"
+    },
+    {
+      "nameStore": "ТВ Запоріжжя Ювілейний 29",
+      "idStore": "retail_zp_zapr_yuvileinyi29"
+    },
+    {
+      "nameStore": "ТВ Звягель Шевченка 15",
+      "idStore": "retail_zht_zvhl_shevchenka15"
+    },
+    {
+      "nameStore": "ТВ Знамянка Кримська, 46",
+      "idStore": "retail_krv_znmk_krymska46"
+    },
+    {
+      "nameStore": "ТВ Золотоноша Черкаська 2",
+      "idStore": "retail_crk_zltn_cherkaskaya9"
+    },
+    {
+      "nameStore": "ТВ Ів Франківськ Довженка 59",
+      "idStore": "retail_if_ivfr_dovzhenka35"
+    },
+    {
+      "nameStore": "ТВ Ів Франківськ Івасюка 21 Г",
+      "idStore": "retail_if_ivfr_ivasiuka21"
+    },
+    {
+      "nameStore": "ТВ Ів Франківськ Коновальця 149",
+      "idStore": "retail_if_ivfr_konovaltsia149"
+    },
+    {
+      "nameStore": "ТВ Ів Франківськ Південний 24Б",
+      "idStore": "retail_if_ivfr_pivdennyi24"
+    },
+    {
+      "nameStore": "ТВ Ів Франківськ Січ Стрільців 68",
+      "idStore": "retail_if_ivfr_strelcov68"
+    },
+    {
+      "nameStore": "ТВ Ізюм Соборна 35/2",
+      "idStore": "retail_hr_izum_soborna35"
+    },
+    {
+      "nameStore": "ТВ Ірпінь Мечникова 101",
+      "idStore": "retail_ki_irpn_mechnikova101"
+    },
+    {
+      "nameStore": "ТВ Ірпінь Університетська 2Ф/4",
+      "idStore": "retail_ki_irpn_universitet2"
+    },
+    {
+      "nameStore": "ТВ Ірпінь Центральна 2А",
+      "idStore": "retail_ki_irpn_tsentralna2"
+    },
+    {
+      "nameStore": "ТВ Кам`янець Подільський Васильєва 15",
+      "idStore": "retail_hm_kmpd_vasylieva15"
+    },
+    {
+      "nameStore": "ТВ Кам`янець Подільський Коріатовичей 25",
+      "idStore": "retail_hm_kmpd_koriatovychei25"
+    },
+    {
+      "nameStore": "ТВ Кам`янець Подільський Соборна 19",
+      "idStore": "retail_hm_kmpd_sobornaya19"
+    },
+    {
+      "nameStore": "ТВ Кам`янське Будівельників 30А",
+      "idStore": "retail_dp_kmns_budivelnykiv30"
+    },
+    {
+      "nameStore": "ТВ Кам`янське Конституції 17Г",
+      "idStore": "retail_dp_kmns_konstytutsii17"
+    },
+    {
+      "nameStore": "ТВ Кам`янське Мельникова 2",
+      "idStore": "retail_dp_kmns_melnykova2"
+    },
+    {
+      "nameStore": "ТВ Кам`янське Свободи 53",
+      "idStore": "retail_dp_kmns_svobody53"
+    },
+    {
+      "nameStore": "ТВ Кам`янське Стуса 13Д",
+      "idStore": "retail_dp_kmns_stusa13"
+    },
+    {
+      "nameStore": "ТВ Кам`янське Терра",
+      "idStore": "retail_dp_kmns_stroiteleyterra"
+    },
+    {
+      "nameStore": "ТВ Київ Аладдін",
+      "idStore": "retail_ki_kiev_aladdin"
+    },
+    {
+      "nameStore": "ТВ Київ Алматинська 4",
+      "idStore": "retail_ki_kiev_almatynska4"
+    },
+    {
+      "nameStore": "ТВ Київ Антоновича 165",
+      "idStore": "retail_ki_kiev_antonovycha165"
+    },
+    {
+      "nameStore": "ТВ Київ Антоновича 50",
+      "idStore": "retail_ki_kiev_antonovicha50"
+    },
+    {
+      "nameStore": "ТВ Київ Аркадія",
+      "idStore": "retail_ki_kiev_arkadia"
+    },
+    {
+      "nameStore": "ТВ Київ Балтійський 23А",
+      "idStore": "retail_ki_kiev_baltiiskyi23"
+    },
+    {
+      "nameStore": "ТВ Київ Бальзака 4",
+      "idStore": "retail_ki_kiev_balzaka4"
+    },
+    {
+      "nameStore": "ТВ Київ Бальзака 94Б",
+      "idStore": "retail_ki_kiev_balzaka94"
+    },
+    {
+      "nameStore": "ТВ Київ Бандери 8",
+      "idStore": "retail_ki_kiev_bandery8"
+    },
+    {
+      "nameStore": "ТВ Київ Березнева 12",
+      "idStore": "retail_ki_kiev_berezneva12"
+    },
+    {
+      "nameStore": "ТВ Київ Берестейський 108",
+      "idStore": "retail_ki_kiev_pobedy108"
+    },
+    {
+      "nameStore": "ТВ Київ Берестейський 136",
+      "idStore": "retail_ki_zhytomyrska"
+    },
+    {
+      "nameStore": "ТВ Київ Берестейський 136Ж",
+      "idStore": "retail_ki_kiev_beresteiskyi136"
+    },
+    {
+      "nameStore": "ТВ Київ Борщагівська 206",
+      "idStore": "retail_ki_kiev_borschagivs206"
+    },
+    {
+      "nameStore": "ТВ Київ Броварський 17",
+      "idStore": "retail_ki_kiev_brovarskyi17"
+    },
+    {
+      "nameStore": "ТВ Київ Васильківська 2",
+      "idStore": "retail_ki_kiev_vasilkovskaya2"
+    },
+    {
+      "nameStore": "ТВ Київ Васильківська 34",
+      "idStore": "retail_ki_kiev_vasilkovskaya34"
+    },
+    {
+      "nameStore": "ТВ Київ Вел Житомирська 40",
+      "idStore": "retail_ki_kiev_bolzhytomyr40"
+    },
+    {
+      "nameStore": "ТВ Київ Вербицького 32",
+      "idStore": "retail_ki_kiev_verbytskoho32"
+    },
+    {
+      "nameStore": "ТВ Київ Верна 7",
+      "idStore": "retail_ki_kiev_verna7"
+    },
+    {
+      "nameStore": "ТВ Київ Верхній Вал 28",
+      "idStore": "retail_ki_kiev_verhnijval2"
+    },
+    {
+      "nameStore": "ТВ Київ Воскресенський 34",
+      "idStore": "retail_ki_kiev_voskresenskyi34"
+    },
+    {
+      "nameStore": "ТВ Київ Голосіївський 108",
+      "idStore": "retail_ki_kiev_holosiivskyi108"
+    },
+    {
+      "nameStore": "ТВ Київ Голосіївський 132",
+      "idStore": "retail_ki_kiev_holosiivskyi132"
+    },
+    {
+      "nameStore": "ТВ Київ Голосіївський 30А",
+      "idStore": "retail_ki_kiev_holosiivskyi30"
+    },
+    {
+      "nameStore": "ТВ Київ Григоренко 22",
+      "idStore": "retail_ki_kiev_grigorenko22"
+    },
+    {
+      "nameStore": "ТВ Київ Дегтярівська 9",
+      "idStore": "retail_ki_kiev_dehtiarivska9"
+    },
+    {
+      "nameStore": "ТВ Київ Довженка 1",
+      "idStore": "retail_ki_kiev_dovzhenka1"
+    },
+    {
+      "nameStore": "ТВ Київ Драгоманова 2",
+      "idStore": "retail_ki_kiev_dragomanova2"
+    },
+    {
+      "nameStore": "ТВ Київ Драгоманова 21",
+      "idStore": "retail_ki_kiev_dragomanova21"
+    },
+    {
+      "nameStore": "ТВ Київ Загорівська 17",
+      "idStore": "retail_ki_kiev_zahorivska17"
+    },
+    {
+      "nameStore": "ТВ Київ Закревського 93А",
+      "idStore": "retail_ki_kiev_zakrevskoho"
+    },
+    {
+      "nameStore": "ТВ Київ Зарічна 1В",
+      "idStore": "retail_ki_kiev_zarichna1"
+    },
+    {
+      "nameStore": "ТВ Київ Златоустівська 2/4",
+      "idStore": "retail_ki_kiev_zlatoustov2"
+    },
+    {
+      "nameStore": "ТВ Київ Івасюка 49",
+      "idStore": "retail_ki_kiev_ivasiuka49"
+    },
+    {
+      "nameStore": "ТВ Київ Івасюка 8",
+      "idStore": "retail_ki_kiev_stalingrada8"
+    },
+    {
+      "nameStore": "ТВ Київ Іллєнка 1",
+      "idStore": "retail_ki_kiev_ilenka1"
+    },
+    {
+      "nameStore": "ТВ Київ Кирилівська 82",
+      "idStore": "retail_ki_kiev_kyrylivska82"
+    },
+    {
+      "nameStore": "ТВ Київ Кібальчича 19В",
+      "idStore": "retail_ki_kiev_kibalchicha19"
+    },
+    {
+      "nameStore": "ТВ Київ Кіото 25",
+      "idStore": "retail_ki_kiev_kioto25"
+    },
+    {
+      "nameStore": "ТВ Київ Корольова 3",
+      "idStore": "retail_ki_kiev_korolevakub"
+    },
+    {
+      "nameStore": "ТВ Київ Костянтинівська 71",
+      "idStore": "retail_ki_kiev_kostiantynivska66"
+    },
+    {
+      "nameStore": "ТВ Київ Краківська 27",
+      "idStore": "retail_ki_kiev_krakivska27"
+    },
+    {
+      "nameStore": "ТВ Київ Лейк Плаза",
+      "idStore": "retail_ki_kiev_gpazov12"
+    },
+    {
+      "nameStore": "ТВ Київ Лесі Українки 24",
+      "idStore": "retail_ki_kiev_ukrainki24"
+    },
+    {
+      "nameStore": "ТВ Київ Липківського 40",
+      "idStore": "retail_ki_kiev_lipkovskogo40"
+    },
+    {
+      "nameStore": "ТВ Київ Лятошинського 14",
+      "idStore": "retail_ki_kiev_lyatoshinskogo"
+    },
+    {
+      "nameStore": "ТВ Київ Магелан",
+      "idStore": "retail_ki_kiev_magelan"
+    },
+    {
+      "nameStore": "ТВ Київ Максимовича 28 Б",
+      "idStore": "retail_ki_kiev_maksimovicha28"
+    },
+    {
+      "nameStore": "ТВ Київ Межигірська 63",
+      "idStore": "retail_ki_kiev_mezhigorskaya63"
+    },
+    {
+      "nameStore": "ТВ Київ Межова 24",
+      "idStore": "retail_ki_kiev_mezhova24"
+    },
+    {
+      "nameStore": "ТВ Київ Миколайчука 4",
+      "idStore": "retail_ki_kiev_mykolaichuka4"
+    },
+    {
+      "nameStore": "ТВ Київ Мілютенко 19",
+      "idStore": "retail_ki_kiev_miliutenko19"
+    },
+    {
+      "nameStore": "ТВ Київ Міхновського 16/1",
+      "idStore": "retail_ki_kiev_druzhbynarodov"
+    },
+    {
+      "nameStore": "ТВ Київ мобільний продаж",
+      "idStore": "retail_ki_kiev_avtotrade"
+    },
+    {
+      "nameStore": "ТВ Київ Некрасова 1",
+      "idStore": "retail_ki_kiev_nekrasova1"
+    },
+    {
+      "nameStore": "ТВ Київ Оазис",
+      "idStore": "retail_ki_oasis"
+    },
+    {
+      "nameStore": "ТВ Київ Оболонський 19",
+      "idStore": "retail_ki_kiev_obolonskyi19"
+    },
+    {
+      "nameStore": "ТВ Київ Оболонський 21Б",
+      "idStore": "retail_ki_kiev_obolonskyi21"
+    },
+    {
+      "nameStore": "ТВ Київ Оболонський 51Б",
+      "idStore": "retail_ki_kiev_obolonskyi51b"
+    },
+    {
+      "nameStore": "ТВ Київ Орнамент",
+      "idStore": "retail_ki_kiev_ornament"
+    },
+    {
+      "nameStore": "ТВ Київ Паладіна 16/39",
+      "idStore": "retail_ki_kiev_palladinaakcity"
+    },
+    {
+      "nameStore": "ТВ Київ Піраміда",
+      "idStore": "retail_ki_kiev_mishugipiramida"
+    },
+    {
+      "nameStore": "ТВ Київ Повітряних сил 36",
+      "idStore": "retail_ki_kiev_vozduhoflot36"
+    },
+    {
+      "nameStore": "ТВ Київ Повітряних сил 56",
+      "idStore": "retail_ki_kiev_povitroflotskyi56"
+    },
+    {
+      "nameStore": "ТВ Київ Політех Берестейський 24",
+      "idStore": "retail_ki_kiev_politekh24"
+    },
+    {
+      "nameStore": "ТВ Київ Промо Виставка",
+      "idStore": "retail_ki_kiev_vystavka"
+    },
+    {
+      "nameStore": "ТВ Київ Пулюя 8А",
+      "idStore": "retail_ki_kiev_puluja8"
+    },
+    {
+      "nameStore": "ТВ Київ Радистів 34В",
+      "idStore": "retail_ki_kiev_radystiv34"
+    },
+    {
+      "nameStore": "ТВ Київ Ревуцького 12/1",
+      "idStore": "retail_ki_kiev_revuckogo12"
+    },
+    {
+      "nameStore": "ТВ Київ Ревуцького 15",
+      "idStore": "retail_ki_kiev_revuckoho15"
+    },
+    {
+      "nameStore": "ТВ Київ Рейгана 8",
+      "idStore": "retail_ki_kiev_draizera8"
+    },
+    {
+      "nameStore": "ТВ Київ Республіка Парк",
+      "idStore": "retail_ki_kiev_respublikapark"
+    },
+    {
+      "nameStore": "ТВ Київ Ретровіль",
+      "idStore": "retail_ki_kiev_retroville"
+    },
+    {
+      "nameStore": "ТВ Київ Русанівська 4",
+      "idStore": "retail_ki_kiev_rusanovskaya4"
+    },
+    {
+      "nameStore": "ТВ Київ Світла 6Б",
+      "idStore": "retail_ki_kiev_svetlaya6"
+    },
+    {
+      "nameStore": "ТВ Київ Святошинська 3А",
+      "idStore": "retail_ki_kiev_svyatoshinska3"
+    },
+    {
+      "nameStore": "ТВ Київ Селянська 1",
+      "idStore": "retail_ki_kiev_selianska1"
+    },
+    {
+      "nameStore": "ТВ Київ Симиренка 5",
+      "idStore": "retail_ki_kiev_symyrenka5"
+    },
+    {
+      "nameStore": "ТВ Київ Смарт Плаза",
+      "idStore": "retail_ki_kiev_smartplaza"
+    },
+    {
+      "nameStore": "ТВ Київ Соборності 7А",
+      "idStore": "retail_ki_kiev_sobornosti7"
+    },
+    {
+      "nameStore": "ТВ Київ Солов`яненка 5",
+      "idStore": "retail_ki_kiev_solovianenka5"
+    },
+    {
+      "nameStore": "ТВ Київ Теліги 25",
+      "idStore": "retail_ki_kiev_teligy25"
+    },
+    {
+      "nameStore": "ТВ Київ Харківське шосе 201-203",
+      "idStore": "retail_ki_kiev_kharkivske201"
+    },
+    {
+      "nameStore": "ТВ Київ Харківське шосе 2А",
+      "idStore": "retail_ki_kiev_kharkovskoe2"
+    },
+    {
+      "nameStore": "ТВ Київ ХарьОК",
+      "idStore": "retail_ki_kiev_brtarasivtsiv9"
+    },
+    {
+      "nameStore": "ТВ Київ Хоткевича 1А",
+      "idStore": "retail_ki_kiev_hotkevicha1a"
+    },
+    {
+      "nameStore": "ТВ Київ Хрещатик 22",
+      "idStore": "retail_ki_kiev_khreshchatyk20"
+    },
+    {
+      "nameStore": "ТВ Київ Хрещатик 7/11",
+      "idStore": "retail_ki_kiev_khreshchatyk7"
+    },
+    {
+      "nameStore": "ТВ Київ Червоної калини 43",
+      "idStore": "retail_ki_kiev_maiakovskoho43"
+    },
+    {
+      "nameStore": "ТВ Київ Червоної калини 6",
+      "idStore": "retail_ki_kiev_mayakovskogo6"
+    },
+    {
+      "nameStore": "ТВ Київ Червоної калини 85",
+      "idStore": "retail_ki_kiev_maiakovskoho85"
+    },
+    {
+      "nameStore": "ТВ Київ Чоколівський 37",
+      "idStore": "retail_ki_kiev_chokolovsk37"
+    },
+    {
+      "nameStore": "ТВ Київ Чорновола 20",
+      "idStore": "retail_ki_kiev_chernovola20"
+    },
+    {
+      "nameStore": "ТВ Київ Щербаківського 45А",
+      "idStore": "retail_ki_kiev_shcherbakovsk45"
+    },
+    {
+      "nameStore": "ТВ Київ Ялтинська 22Б",
+      "idStore": "retail_ki_kiev_yaltinskaya22"
+    },
+    {
+      "nameStore": "ТВ Ковель Модеста Левицького 2А",
+      "idStore": "retail_vl_kovl_modlevytskoho2"
+    },
+    {
+      "nameStore": "ТВ Коломия Січ Стрільців 62",
+      "idStore": "retail_if_klmy_striltsiv62"
+    },
+    {
+      "nameStore": "ТВ Коломия Шевченка 14",
+      "idStore": "retail_if_klmy_shevchenko14"
+    },
+    {
+      "nameStore": "ТВ Костопіль Героїв України 13А",
+      "idStore": "retail_rv_kstl_bereznia13"
+    },
+    {
+      "nameStore": "ТВ Костянтинівка Громова 5А",
+      "idStore": "retail_dn_knst_hromova5"
+    },
+    {
+      "nameStore": "ТВ Краматорськ Паркова 30",
+      "idStore": "retail_dn_krmt_parkova30"
+    },
+    {
+      "nameStore": "ТВ Кременець Симона Петлюри 4В",
+      "idStore": "retail_tp_krnt_symonapetliury4"
+    },
+    {
+      "nameStore": "ТВ Кременчук Республіканська 134 А",
+      "idStore": "retail_pt_krmn_respublikansk134"
+    },
+    {
+      "nameStore": "ТВ Кременчук Сердюка 15",
+      "idStore": "retail_pt_krmn_serdiuka15"
+    },
+    {
+      "nameStore": "ТВ Кременчук Українки 57",
+      "idStore": "retail_pt_krmn_ukrainki57"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Вільної Ічкерії 9",
+      "idStore": "retail_dp_krrg_volgogradskaya9"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Героїв Маріуполя 47Б",
+      "idStore": "retail_dp_krrg_holovka47"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Калнишевського 2",
+      "idStore": "retail_dp_krrg_kalnyshevskoho2"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Космонавтів 3",
+      "idStore": "retail_dp_krrg_kosmonavtov3"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Криворіжсталі 9",
+      "idStore": "retail_dp_krrg_kryvorizhstali9"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Магістральна 10",
+      "idStore": "retail_dp_krrg_mahistralna10"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Незалежності 16Б",
+      "idStore": "retail_dp_krrg_nezalezhnosti16"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Перемоги 37 В",
+      "idStore": "retail_dp_krrg_peremohy37"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Південний 17",
+      "idStore": "retail_dp_krrg_pivdennyi17"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Південний 34",
+      "idStore": "retail_dp_krrg_pivdennyi34"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Співдружності 66",
+      "idStore": "retail_dp_krrg_sodruzhestva66"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Терра",
+      "idStore": "retail_dp_krrg_5zarichnyi11"
+    },
+    {
+      "nameStore": "ТВ Кривий Ріг Шухевича 17",
+      "idStore": "retail_dp_krrg_musorhskoho17"
+    },
+    {
+      "nameStore": "ТВ Кропивницький Вел Перспективна 27",
+      "idStore": "retail_krv_krop_velperspektyvna27"
+    },
+    {
+      "nameStore": "ТВ Кропивницький Вокзальна 20",
+      "idStore": "retail_krv_krop_vokzalna20"
+    },
+    {
+      "nameStore": "ТВ Кропивницький Короленка 32А",
+      "idStore": "retail_krv_krop_korolenka32"
+    },
+    {
+      "nameStore": "ТВ Кропивницький Незалежності 28Л",
+      "idStore": "retail_krv_krop_popova28"
+    },
+    {
+      "nameStore": "ТВ Кропивницький Полтавська 81Б",
+      "idStore": "retail_krv_krop_poltavska81"
+    },
+    {
+      "nameStore": "ТВ Кропивницький Тельнова 12",
+      "idStore": "retail_krv_krop_telnova12"
+    },
+    {
+      "nameStore": "ТВ Лозова Грушевського 4",
+      "idStore": "retail_hr_lozv_hrushevskoho4"
+    },
+    {
+      "nameStore": "ТВ Лубни Володимирський 32",
+      "idStore": "retail_pt_lubn_vladymyrsky32"
+    },
+    {
+      "nameStore": "ТВ Луцьк Волі 15",
+      "idStore": "retail_vl_ltck_voli15"
+    },
+    {
+      "nameStore": "ТВ Луцьк Волі 21",
+      "idStore": "retail_vl_ltck_voli21"
+    },
+    {
+      "nameStore": "ТВ Луцьк Івана Газюка 2",
+      "idStore": "retail_vl_ltck_druzhbynarodiv2"
+    },
+    {
+      "nameStore": "ТВ Луцьк Привокзальна 10Б",
+      "idStore": "retail_vl_ltck_privokzalnaya10"
+    },
+    {
+      "nameStore": "ТВ Луцьк Рівненська 4",
+      "idStore": "retail_vl_ltck_rivnenska4"
+    },
+    {
+      "nameStore": "ТВ Львів Бандери 37",
+      "idStore": "retail_lv_lvov_bandery37"
+    },
+    {
+      "nameStore": "ТВ Львів Вікторія Гарденс",
+      "idStore": "retail_lv_lvov_victoriagardens"
+    },
+    {
+      "nameStore": "ТВ Львів Володимира Великого 18",
+      "idStore": "retail_lv_lvov_vladimiravel18"
+    },
+    {
+      "nameStore": "ТВ Львів Героїв УПА 76",
+      "idStore": "retail_lv_lvov_geroevupa76"
+    },
+    {
+      "nameStore": "ТВ Львів Городоцька 8",
+      "idStore": "retail_lv_lvov_gorodockaya8"
+    },
+    {
+      "nameStore": "ТВ Львів Замарстинівська170Д",
+      "idStore": "retail_lv_lvov_zamarstynivska170"
+    },
+    {
+      "nameStore": "ТВ Львів Зелена 151",
+      "idStore": "retail_lv_lvov_zelena151"
+    },
+    {
+      "nameStore": "ТВ Львів Княгині Ольги 100Л",
+      "idStore": "retail_lv_lvov_kniahyniolhy100"
+    },
+    {
+      "nameStore": "ТВ Львів Кульпарківська 190",
+      "idStore": "retail_lv_lvov_kulparkivska190"
+    },
+    {
+      "nameStore": "ТВ Львів Кульпарківська 230А",
+      "idStore": "retail_lv_lvov_kulparkivska230"
+    },
+    {
+      "nameStore": "ТВ Львів Малоголосківська 12Г",
+      "idStore": "retail_lv_lvov_maloholoskivska12"
+    },
+    {
+      "nameStore": "ТВ Львів Наукова 2ж",
+      "idStore": "retail_lv_lvov_naukova2"
+    },
+    {
+      "nameStore": "ТВ Львів Пекарська 3",
+      "idStore": "retail_lv_lvov_pekarska3"
+    },
+    {
+      "nameStore": "ТВ Львів Садова 2А",
+      "idStore": "retail_lv_lvov_sadova2"
+    },
+    {
+      "nameStore": "ТВ Львів Сихівська 8",
+      "idStore": "retail_lv_lvov_sykhivska8"
+    },
+    {
+      "nameStore": "ТВ Львів Солодова 1",
+      "idStore": "retail_lv_lvov_solodova1"
+    },
+    {
+      "nameStore": "ТВ Львів Спартак",
+      "idStore": "retail_lv_spartak"
+    },
+    {
+      "nameStore": "ТВ Львів Трильовського 4",
+      "idStore": "retail_lv_lvov_trylovskoho4"
+    },
+    {
+      "nameStore": "ТВ Львів Угорська 12",
+      "idStore": "retail_lv_lvov_uhorska12"
+    },
+    {
+      "nameStore": "ТВ Львів Хмельницького 214",
+      "idStore": "retail_lv_lvov_214hmelnickogo"
+    },
+    {
+      "nameStore": "ТВ Львів Чорновола 57",
+      "idStore": "retail_lv_lvov_chernovola57"
+    },
+    {
+      "nameStore": "ТВ Львів Шевченка 24",
+      "idStore": "retail_lv_lvov_shevchenka24"
+    },
+    {
+      "nameStore": "ТВ Львів Шувар",
+      "idStore": "retail_lv_shuvar"
+    },
+    {
+      "nameStore": "ТВ Макарів Ростовського 40/20",
+      "idStore": "retail_ki_mkrv_naberezna3"
+    },
+    {
+      "nameStore": "ТВ Марганець Лермонтова 12",
+      "idStore": "retail_dp_mrnc_lermontova12"
+    },
+    {
+      "nameStore": "ТВ Мерефа Дніпровська 207А",
+      "idStore": "retail_hr_mrfa_dniprovska207"
+    },
+    {
+      "nameStore": "ТВ Миколаїв Корабелів 12/13",
+      "idStore": "retail_nk_nklv_korabeliv1213"
+    },
+    {
+      "nameStore": "ТВ Миколаїв Миру 56",
+      "idStore": "retail_nk_nklv_mira56"
+    },
+    {
+      "nameStore": "ТВ Миколаїв Одеське 88",
+      "idStore": "retail_nk_nklv_odesskoe88"
+    },
+    {
+      "nameStore": "ТВ Миколаїв Озерна 2В",
+      "idStore": "retail_nk_nklv_ozernaya2"
+    },
+    {
+      "nameStore": "ТВ Миколаїв Центральний 171/2",
+      "idStore": "retail_nk_nklv_centralnyj171"
+    },
+    {
+      "nameStore": "ТВ Миргород Гоголя 123",
+      "idStore": "retail_pt_mrgr_hoholia123"
+    },
+    {
+      "nameStore": "ТВ Могилів Подільський Київська 15",
+      "idStore": "retail_vn_mvpd_kyivska15"
+    },
+    {
+      "nameStore": "ТВ Мукачево Верді 1",
+      "idStore": "retail_zkp_mkcv_verdi1"
+    },
+    {
+      "nameStore": "ТВ Мукачево Володимира 33а",
+      "idStore": "retail_zkp_mkcv_volodymyra33"
+    },
+    {
+      "nameStore": "ТВ Мукачево Духновича 22",
+      "idStore": "retail_zkp_mkcv_duhnovicha22"
+    },
+    {
+      "nameStore": "ТВ Ніжин Батюка 9",
+      "idStore": "retail_cng_nzhn_batiuka9"
+    },
+    {
+      "nameStore": "ТВ Ніжин Шевченко 128/123",
+      "idStore": "retail_cng_nzhn_shevchenko128"
+    },
+    {
+      "nameStore": "ТВ Нові Петрівці Свято Покровська",
+      "idStore": "retail_ki_nvpt_sviatopokrov235"
+    },
+    {
+      "nameStore": "ТВ Нововолинськ Дружби 19",
+      "idStore": "retail_vl_nvvl_druzhby19"
+    },
+    {
+      "nameStore": "ТВ Нововолинськ Перемоги 2А",
+      "idStore": "retail_vl_nvvl_pobedy2"
+    },
+    {
+      "nameStore": "ТВ Новоград Волинський Київська 4А",
+      "idStore": "retail_zht_nvgv_pushkina4"
+    },
+    {
+      "nameStore": "ТВ Новомосковськ Гетьманська 34",
+      "idStore": "retail_dp_nvms_getmanskaya34"
+    },
+    {
+      "nameStore": "ТВ Новосілки Миру 2А",
+      "idStore": "retail_ki_nvsl_myru2a"
+    },
+    {
+      "nameStore": "ТВ Обухів Каштанова 16/5",
+      "idStore": "retail_ki_obhv_kashtanova16"
+    },
+    {
+      "nameStore": "ТВ Обухів Київська 166",
+      "idStore": "retail_ki_obhv_kievskaya166"
+    },
+    {
+      "nameStore": "ТВ Обухів Київська 3Б",
+      "idStore": "retail_ki_obhv_kievskaya3"
+    },
+    {
+      "nameStore": "ТВ Одеса 28-ї бригади 12",
+      "idStore": "retail_od_krzk_radisna1"
+    },
+    {
+      "nameStore": "ТВ Одеса Адміральський 1",
+      "idStore": "retail_od_odes_admiralskij1"
+    },
+    {
+      "nameStore": "ТВ Одеса Балківська 42",
+      "idStore": "retail_od_odes_balkivska42"
+    },
+    {
+      "nameStore": "ТВ Одеса Генуезська 1Е",
+      "idStore": "retail_od_odes_henuzska1"
+    },
+    {
+      "nameStore": "ТВ Одеса Євгена Чикаленка 68/1",
+      "idStore": "retail_od_odes_viliamsa681"
+    },
+    {
+      "nameStore": "ТВ Одеса Європейська 26",
+      "idStore": "retail_od_odes_katerininskaya26"
+    },
+    {
+      "nameStore": "ТВ Одеса Заболотного 52",
+      "idStore": "retail_od_odes_zabolotnogo52"
+    },
+    {
+      "nameStore": "ТВ Одеса Інглезі 2",
+      "idStore": "retail_od_odes_inhlezi2"
+    },
+    {
+      "nameStore": "ТВ Одеса Левітана 118А",
+      "idStore": "retail_od_odes_levitana118"
+    },
+    {
+      "nameStore": "ТВ Одеса Лип 13А",
+      "idStore": "retail_od_odes_lyp13a"
+    },
+    {
+      "nameStore": "ТВ Одеса Львівська 15Б",
+      "idStore": "retail_od_odes_lvivska15"
+    },
+    {
+      "nameStore": "ТВ Одеса Люстдорфська 52",
+      "idStore": "retail_od_odes_lustdorf52"
+    },
+    {
+      "nameStore": "ТВ Одеса Палія 99Б",
+      "idStore": "retail_od_odes_paliia99"
+    },
+    {
+      "nameStore": "ТВ Одеса Преображенська 68",
+      "idStore": "retail_od_odes_preobrazhen68"
+    },
+    {
+      "nameStore": "ТВ Одеса Садова 2",
+      "idStore": "retail_od_odes_sadova2"
+    },
+    {
+      "nameStore": "ТВ Одеса Сахарова 1Б",
+      "idStore": "retail_od_odes_sakharova1"
+    },
+    {
+      "nameStore": "ТВ Одеса Семафорний 4Т",
+      "idStore": "retail_od_odes_semafornyi4"
+    },
+    {
+      "nameStore": "ТВ Одеса Фонтан Скай",
+      "idStore": "retail_od_odes_fontansky"
+    },
+    {
+      "nameStore": "ТВ Одеса Ярослава Мудрого 17",
+      "idStore": "retail_od_glushko"
+    },
+    {
+      "nameStore": "ТВ Олександрія Соборний 100А",
+      "idStore": "retail_krv_alks_sobornyj100"
+    },
+    {
+      "nameStore": "ТВ Олександрія Соборний 26",
+      "idStore": "retail_krv_alks_sobornyj26"
+    },
+    {
+      "nameStore": "ТВ Олександрія Соборний 94",
+      "idStore": "retail_krv_alks_soborny128"
+    },
+    {
+      "nameStore": "ТВ Охтирка Незалежності 30",
+      "idStore": "retail_sm_ohtr_nezalezhnosti30"
+    },
+    {
+      "nameStore": "ТВ Павлоград Горького 164",
+      "idStore": "retail_dp_pvgr_gorkogo164"
+    },
+    {
+      "nameStore": "ТВ Первомайськ Грушевського 41/35",
+      "idStore": "retail_nk_prvm_hrushevskoho4135"
+    },
+    {
+      "nameStore": "ТВ Петр Борщагівка Альцест",
+      "idStore": "retail_ki_ptbr_alcest"
+    },
+    {
+      "nameStore": "ТВ Петр Борщагівка Ярослава Мудрого 60Б/62",
+      "idStore": "retail_ki_ptbr_mudrogo62"
+    },
+    {
+      "nameStore": "ТВ Пирятин Незалежності 2Б",
+      "idStore": "retail_pt_prtn_sobornosti13"
+    },
+    {
+      "nameStore": "ТВ Південне Волна",
+      "idStore": "retail_od_yzhn_volna"
+    },
+    {
+      "nameStore": "ТВ Південноукраїнськ Незалежності 21",
+      "idStore": "retail_nk_yzruk_nezalezhnosti21"
+    },
+    {
+      "nameStore": "ТВ Подільськ Перемоги 1А",
+      "idStore": "retail_od_pdls_peremohy1"
+    },
+    {
+      "nameStore": "ТВ Полтава Великотирнівська 39",
+      "idStore": "retail_pt_pltv_velykotyrniv39"
+    },
+    {
+      "nameStore": "ТВ Полтава Ветеринарна 22",
+      "idStore": "retail_pt_pltv_evropejskaya255"
+    },
+    {
+      "nameStore": "ТВ Полтава Європейська 94",
+      "idStore": "retail_pt_pltv_yevropeiska94"
+    },
+    {
+      "nameStore": "ТВ Полтава Мазепи 45",
+      "idStore": "retail_pt_pltv_mazepy45"
+    },
+    {
+      "nameStore": "ТВ Полтава Небесної Сотні 10/19",
+      "idStore": "retail_pt_pltv_nebsotni10"
+    },
+    {
+      "nameStore": "ТВ Прилуки Київська 156",
+      "idStore": "retail_cng_prlk_kyivska156"
+    },
+    {
+      "nameStore": "ТВ Рівне Бачинського 5",
+      "idStore": "retail_rv_rovn_bachynskoho5"
+    },
+    {
+      "nameStore": "ТВ Рівне Грушевського 13",
+      "idStore": "retail_rv_rovn_hrushevskoho13"
+    },
+    {
+      "nameStore": "ТВ Рівне Київська 19",
+      "idStore": "retail_rv_rovn_kyivska19"
+    },
+    {
+      "nameStore": "ТВ Рівне Миру 11",
+      "idStore": "retail_rv_rovn_mira11"
+    },
+    {
+      "nameStore": "ТВ Ромни Соборна 23",
+      "idStore": "retail_sm_romn_soborna23"
+    },
+    {
+      "nameStore": "ТВ Самар Гетьманська 48",
+      "idStore": "retail_dp_smar_getmanskaya48"
+    },
+    {
+      "nameStore": "ТВ Самар Яворницького 2",
+      "idStore": "retail_dp_nvms_yavornick2"
+    },
+    {
+      "nameStore": "ТВ Світловодськ Героїв України 73",
+      "idStore": "retail_krv_svvd_heroivukrainy73"
+    },
+    {
+      "nameStore": "ТВ Синельникове Кримська 31",
+      "idStore": "retail_dp_snln_krymska31"
+    },
+    {
+      "nameStore": "ТВ Славута Ярослава Мудрого 17А",
+      "idStore": "retail_hm_slvt_mudrogo17"
+    },
+    {
+      "nameStore": "ТВ Слов`янськ Шовковична 12",
+      "idStore": "retail_dn_slvn_shelkovichna12"
+    },
+    {
+      "nameStore": "ТВ Сокаль Шашкевича",
+      "idStore": "retail_lv_sokl_tartakivska7"
+    },
+    {
+      "nameStore": "ТВ Соф Борщагівка Європарк",
+      "idStore": "retail_ki_sfbr_evropark"
+    },
+    {
+      "nameStore": "ТВ Соф Борщагівка Зелена 12",
+      "idStore": "retail_ki_sfbr_zelena12"
+    },
+    {
+      "nameStore": "ТВ Соф Борщагівка Неб Сотні 28",
+      "idStore": "retail_ki_sfbr_gernebsotni28"
+    },
+    {
+      "nameStore": "ТВ Соф Борщагівка Софія Молл",
+      "idStore": "retail_ki_sfbr_sofiamall"
+    },
+    {
+      "nameStore": "ТВ Соф Борщагівка Шалімова 70",
+      "idStore": "retail_ki_sfbr_shalimova70"
+    },
+    {
+      "nameStore": "ТВ Стебник Шевченка 1",
+      "idStore": "retail_lv_stbk_shevchenka1"
+    },
+    {
+      "nameStore": "ТВ Суми Британська 41",
+      "idStore": "retail_sm_sumy_brytanska41"
+    },
+    {
+      "nameStore": "ТВ Суми Лушпи 10/1",
+      "idStore": "retail_sm_sumy_lushpy10"
+    },
+    {
+      "nameStore": "ТВ Суми Нижньовоскресенська 1",
+      "idStore": "retail_sm_sumy_kooperativnaya1"
+    },
+    {
+      "nameStore": "ТВ Суми Перемоги 115",
+      "idStore": "retail_sm_sumy_peremohy115"
+    },
+    {
+      "nameStore": "ТВ Суми Петропавлівська 76",
+      "idStore": "retail_sm_sumy_petropavlivska76"
+    },
+    {
+      "nameStore": "ТВ Суми Харківська 2/1",
+      "idStore": "retail_sm_sumy_harkovskaya2"
+    },
+    {
+      "nameStore": "ТВ Тернівка Харківська 5",
+      "idStore": "retail_dp_trnv_kharkivska5"
+    },
+    {
+      "nameStore": "ТВ Тернопіль 15 Квітня 2",
+      "idStore": "retail_tp_trnp_15kvitnia2"
+    },
+    {
+      "nameStore": "ТВ Тернопіль Бандери 90",
+      "idStore": "retail_tp_trnp_bandery90"
+    },
+    {
+      "nameStore": "ТВ Тернопіль Героїв Євромайдану 9",
+      "idStore": "retail_tp_trnp_yevromaidanu9"
+    },
+    {
+      "nameStore": "ТВ Тернопіль Збаразька 29А",
+      "idStore": "retail_tp_trnp_zbarazka29"
+    },
+    {
+      "nameStore": "ТВ Тернопіль Тарнавського 36",
+      "idStore": "retail_tp_trnp_tarnavskogo36"
+    },
+    {
+      "nameStore": "ТВ Тернопіль Тролейбусна 17",
+      "idStore": "retail_tp_trnp_troleibusna17"
+    },
+    {
+      "nameStore": "ТВ Тернопіль Шептицького 20",
+      "idStore": "retail_tp_trnp_sheptickogo20"
+    },
+    {
+      "nameStore": "ТВ Трускавець Стебницька",
+      "idStore": "retail_lv_trsk_stebnytska"
+    },
+    {
+      "nameStore": "ТВ Ужгород Закарпатська 47",
+      "idStore": "retail_zkp_uzgr_zakarpatska47"
+    },
+    {
+      "nameStore": "ТВ Ужгород Занковецької 70",
+      "idStore": "retail_zkp_uzgr_zankoveckoy70"
+    },
+    {
+      "nameStore": "ТВ Ужгород Минайська18г",
+      "idStore": "retail_zkp_uzgr_mynaiska18"
+    },
+    {
+      "nameStore": "ТВ Ужгород Фединця 24",
+      "idStore": "retail_zkp_uzgr_fedyntsia24"
+    },
+    {
+      "nameStore": "ТВ Ужгород Шандора Петефі 17",
+      "idStore": "retail_zkp_uzgr_shandorapet17"
+    },
+    {
+      "nameStore": "ТВ Ужгород Швабська 15",
+      "idStore": "retail_zkp_uzgr_shvabska27"
+    },
+    {
+      "nameStore": "ТВ Українка Дніпровський 5",
+      "idStore": "retail_ki_ukrk_dniprovskyi5"
+    },
+    {
+      "nameStore": "ТВ Українка Юності 6",
+      "idStore": "retail_ki_ukrk_yunosti6"
+    },
+    {
+      "nameStore": "ТВ Умань Європейська 29",
+      "idStore": "retail_crk_uman_yevropeiska29"
+    },
+    {
+      "nameStore": "ТВ Умань Європейська 35",
+      "idStore": "retail_crk_uman_yevropeiska35"
+    },
+    {
+      "nameStore": "ТВ Умань Незалежності 2А",
+      "idStore": "retail_crk_uman_nezalezhnosti2"
+    },
+    {
+      "nameStore": "ТВ Умань Фонтанна 31 Г",
+      "idStore": "retail_crk_uman_fontannaya31"
+    },
+    {
+      "nameStore": "ТВ Фастів Небесної Сотні 10/2",
+      "idStore": "retail_ki_fstv_nebsotni10"
+    },
+    {
+      "nameStore": "ТВ Харків Аерокосмічний 167",
+      "idStore": "retail_hr_hark_gagarina167"
+    },
+    {
+      "nameStore": "ТВ Харків Аерокосмічний 20",
+      "idStore": "retail_hr_hark_aerokosmichnyi20"
+    },
+    {
+      "nameStore": "ТВ Харків Байрона 179",
+      "idStore": "retail_hr_hark_stalingrada179"
+    },
+    {
+      "nameStore": "ТВ Харків Героїв Харкова 256",
+      "idStore": "retail_hr_hark_moskovskiy256"
+    },
+    {
+      "nameStore": "ТВ Харків Героїв Харькова 274В",
+      "idStore": "retail_hr_hark_heroivkharkova274"
+    },
+    {
+      "nameStore": "ТВ Харків Золочівська 23",
+      "idStore": "retail_hr_hark_zolochivska23"
+    },
+    {
+      "nameStore": "ТВ Харків Китаєнко 4",
+      "idStore": "retail_hr_hark_kytaienko4"
+    },
+    {
+      "nameStore": "ТВ Харків Клочківська 9А",
+      "idStore": "retail_hr_hark_klochkovskaya9"
+    },
+    {
+      "nameStore": "ТВ Харків Людвіга Свободи 28А",
+      "idStore": "retail_hr_hark_ludvigasvob28"
+    },
+    {
+      "nameStore": "ТВ Харків Москалівська 72",
+      "idStore": "retail_hr_hark_moskalivska72"
+    },
+    {
+      "nameStore": "ТВ Харків Науки 64",
+      "idStore": "retail_hr_hark_nauki64"
+    },
+    {
+      "nameStore": "ТВ Харків Нескорених 29Г",
+      "idStore": "retail_hr_hark_geroevtruda29"
+    },
+    {
+      "nameStore": "ТВ Харків Нетіченська 25",
+      "idStore": "retail_hr_hark_netechenskaya25"
+    },
+    {
+      "nameStore": "ТВ Харків Олександрівський 156",
+      "idStore": "retail_hr_hark_aleksandrov156"
+    },
+    {
+      "nameStore": "ТВ Харків Полтавський Шлях 140",
+      "idStore": "retail_hr_hark_poltavskyshlyakh140"
+    },
+    {
+      "nameStore": "ТВ Харків Соборності 238Д",
+      "idStore": "retail_hr_hark_druzhbynarodov249"
+    },
+    {
+      "nameStore": "ТВ Харків Стадіонний 5А",
+      "idStore": "retail_hr_hark_stadionnyj11"
+    },
+    {
+      "nameStore": "ТВ Харків Тракторобудівників 130",
+      "idStore": "retail_hr_hark_traktorobud130"
+    },
+    {
+      "nameStore": "ТВ Харків Ювілейний 7А",
+      "idStore": "retail_hr_hark_yubilejnyj7"
+    },
+    {
+      "nameStore": "ТВ Харків Ювілейний 89",
+      "idStore": "retail_hr_hark_yubilejnyj89"
+    },
+    {
+      "nameStore": "ТВ Харків Ярослава Мудрого 30/32",
+      "idStore": "retail_hr_hark_mudrogo30"
+    },
+    {
+      "nameStore": "ТВ Херсон Некрасова 29",
+      "idStore": "retail_hrs_hrsn_nekrasova"
+    },
+    {
+      "nameStore": "ТВ Хмельницький Вудмолл",
+      "idStore": "retail_hm_hmln_woodmall"
+    },
+    {
+      "nameStore": "ТВ Хмельницький Либідь плаза",
+      "idStore": "retail_hm_hmln_lybidplaza"
+    },
+    {
+      "nameStore": "ТВ Хмельницький Львівське шосе 10",
+      "idStore": "retail_hm_hmln_livivskeshose10"
+    },
+    {
+      "nameStore": "ТВ Хмельницький Панаса Мирного 1",
+      "idStore": "retail_hm_hmln_panasamyrnoho1"
+    },
+    {
+      "nameStore": "ТВ Хмельницький Шевченка 39",
+      "idStore": "retail_hm_hmln_shevchenka39"
+    },
+    {
+      "nameStore": "ТВ Хмільник Перемоги 3",
+      "idStore": "retail_vn_kmlnk_peremohy3"
+    },
+    {
+      "nameStore": "ТВ Хотянівка Валова 1Д",
+      "idStore": "retail_ki_khtk_valova1"
+    },
+    {
+      "nameStore": "ТВ Хуст 900 річчя 9А",
+      "idStore": "retail_zkp_hust_karpatsichi17"
+    },
+    {
+      "nameStore": "ТВ Чабани Машинобудівників 16",
+      "idStore": "retail_ki_chbn_mashynobud16"
+    },
+    {
+      "nameStore": "ТВ Черкаси Благовісна 251",
+      "idStore": "retail_crk_crks_blahovisna251"
+    },
+    {
+      "nameStore": "ТВ Черкаси Гоголя 261",
+      "idStore": "retail_crk_crks_hoholia261"
+    },
+    {
+      "nameStore": "ТВ Черкаси Лазаренка 26",
+      "idStore": "retail_crk_crks_lazarenka26"
+    },
+    {
+      "nameStore": "ТВ Черкаси Нижня Горова 44",
+      "idStore": "retail_crk_crks_nyzhniahorova44"
+    },
+    {
+      "nameStore": "ТВ Черкаси Смілянська 45",
+      "idStore": "retail_crk_crks_smelanskaya44"
+    },
+    {
+      "nameStore": "ТВ Черкаси Шевченка 132",
+      "idStore": "retail_crk_crks_shevchenka132"
+    },
+    {
+      "nameStore": "ТВ Черкаси Шевченка 318",
+      "idStore": "retail_crk_crks_shevchenka318"
+    },
+    {
+      "nameStore": "ТВ Чернівці Головна 200",
+      "idStore": "retail_cnc_ctnc_holovna200"
+    },
+    {
+      "nameStore": "ТВ Чернівці Незалежності 119",
+      "idStore": "retail_cnc_ctnc_nezalezhnst119"
+    },
+    {
+      "nameStore": "ТВ Чернівці Руська 209Б",
+      "idStore": "retail_cnc_ctnc_ruska209"
+    },
+    {
+      "nameStore": "ТВ Чернівці Руська 248",
+      "idStore": "retail_cnc_ctnc_ruska248"
+    },
+    {
+      "nameStore": "ТВ Чернівці Університетська 6",
+      "idStore": "retail_cnc_ctnc_universitet6"
+    },
+    {
+      "nameStore": "ТВ Чернівці Ясська 3",
+      "idStore": "retail_cnc_ctnc_yasska3"
+    },
+    {
+      "nameStore": "ТВ Чернігів Княжа 26",
+      "idStore": "retail_cng_kirponosa"
+    },
+    {
+      "nameStore": "ТВ Чернігів Левка Лук`яненка 70",
+      "idStore": "retail_cng_cngv_rokosovskogo70"
+    },
+    {
+      "nameStore": "ТВ Чернігів Миру 53 А",
+      "idStore": "retail_cng_cngv_myru53"
+    },
+    {
+      "nameStore": "ТВ Чернігів Незалежності 25",
+      "idStore": "retail_cng_cngv_nezaleznosti25"
+    },
+    {
+      "nameStore": "ТВ Чернігів Танкової Бригади 28А",
+      "idStore": "retail_cng_cngv_bryhada28"
+    },
+    {
+      "nameStore": "ТВ Чорноморськ Першого Травня 23",
+      "idStore": "retail_od_chmr_pershtravnia23"
+    },
+    {
+      "nameStore": "ТВ Чортків Бандери 27",
+      "idStore": "retail_tp_crtkv_bandery27"
+    },
+    {
+      "nameStore": "ТВ Чугуїв Харківська 127",
+      "idStore": "retail_hr_chuh_kharkivska127"
+    },
+    {
+      "nameStore": "ТВ Шепетівка Небесної Сотні 32В",
+      "idStore": "retail_hm_sptk_nebsotni32"
+    },
+    {
+      "nameStore": "ТВ Шостка Свободи 35",
+      "idStore": "retail_sm_shst_svobody35"
+    },
+    {
+      "nameStore": "ТВ Яворів Тичини 3",
+      "idStore": "retail_lv_yvrv_tychyny3"
+    },
+    {
+      "nameStore": "ТВ Яготин Незалежності 140",
+      "idStore": "retail_ki_yhtn_vokzalna1"
+    },
+    {
+      "nameStore": "ТВ Яремче Свободи 255А",
+      "idStore": "retail_zkp_yare_svobody255"
+    }
+  ]

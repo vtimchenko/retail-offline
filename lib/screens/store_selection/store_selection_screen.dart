@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/store.dart';
+import '../../repositories/session_data_repository.dart';
 import '../../services/store_service.dart';
 import '../../widgets/centered_content.dart';
 import '../../widgets/status_message.dart';
@@ -14,9 +15,14 @@ class StoreSelectionScreen extends StatefulWidget {
   const StoreSelectionScreen({
     super.key,
     this.storeService = const StoreService(),
+    this.repository,
   });
 
   final StoreService storeService;
+
+  /// Session data shared with the home screen. A new in-memory repository is
+  /// created if none is provided.
+  final SessionDataRepository? repository;
 
   @override
   State<StoreSelectionScreen> createState() => _StoreSelectionScreenState();
@@ -28,9 +34,12 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> {
   /// Selected store; lives only for the current session (not persisted).
   Store? _selectedStore;
 
+  late final SessionDataRepository _repository;
+
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? InMemorySessionDataRepository();
     _storesFuture = widget.storeService.loadStores();
   }
 
@@ -44,9 +53,11 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> {
   void _continue() {
     final store = _selectedStore;
     if (store == null) return;
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => HomeScreen(store: store)));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => HomeScreen(store: store, repository: _repository),
+      ),
+    );
   }
 
   @override

@@ -24,4 +24,41 @@ abstract final class AppStrings {
   static const String storesErrorTitle = 'Не вдалося завантажити магазини';
   static const String storesErrorMessage =
       'Перевірте файл stores.json та спробуйте ще раз.';
+
+  // ---- Home screen: data import ----
+  static const String homeTitle = 'Підготовка даних';
+  static const String homeSubtitle =
+      'Додайте два файли Excel (.xlsx): замовлення та залишки. Кожен файл '
+      'можна обрати на пристрої або вказати посилання Google Drive.';
+  static const String ordersCardTitle = 'Файл замовлень';
+  static const String inventoryCardTitle = 'Файл залишків';
+  static const String selectFile = 'Обрати файл';
+  static const String googleDriveLink = 'Посилання Google Drive';
+  static const String noFileSelected = 'Файл не обрано';
+  static const String fileLabel = 'Файл';
+  static const String sourceLabel = 'Джерело';
+  static const String sourceLocal = 'Локальний файл';
+  static const String sourceGoogleDrive = 'Google Drive';
+  static const String statusEmpty = 'Не обрано';
+  static const String statusReady = 'Обрано';
+  static const String statusLoading = 'Обробка…';
+  static const String statusLoaded = 'Завантажено';
+  static const String statusError = 'Помилка';
+  static const String loadData = 'Завантажити дані';
+  static const String loadDataHint = 'Щоб продовжити, додайте обидва файли.';
+  static const String importing = 'Обробка файлів…';
+  static const String importDoneTitle = 'Дані завантажено';
+  static const String ordersCount = 'Замовлень';
+  static const String orderItemsCount = 'Товарних позицій';
+  static const String inventoryRecordsCount = 'Записів залишків';
+  static const String driveDialogTitle = 'Посилання Google Drive';
+  static const String driveDialogLabel = 'Посилання на файл';
+  static const String driveDialogHint = 'https://drive.google.com/file/d/…';
+  static const String driveDialogNote =
+      'Файл або таблиця Google мають бути відкриті для всіх, хто має '
+      'посилання. Якщо Google не дозволить завантажити файл у браузері, '
+      'завантажте його на пристрій '
+      'і оберіть кнопкою «Обрати файл».';
+  static const String cancel = 'Скасувати';
+  static const String getFile = 'Отримати файл';
 }

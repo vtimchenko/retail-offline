@@ -5,6 +5,7 @@ import '../../core/constants/import_messages.dart';
 import '../../core/errors/import_exception.dart';
 import '../../diagnostics/picker_diagnostics.dart';
 import '../../models/imported_file.dart';
+import 'web_picker_options.dart';
 
 /// A file chosen in the picker: name plus contents (no filesystem path).
 typedef PickedBytes = ({String name, Uint8List bytes});
@@ -80,13 +81,17 @@ class LocalFileService {
   static Future<PickedBytes?> _pickWithFilePicker() async {
     // TEMPORARY DIAGNOSTICS: logging only; the call below is unchanged.
     final diag = PickerDiagnostics.instance;
-    diag.log("FilePicker.pickFile called (custom, allowedExtensions=['xlsx'])");
+    diag.log(
+      "FilePicker.pickFile called (custom, allowedExtensions=['xlsx'], "
+      '$pickerWebOptionsLabel)',
+    );
     final stopWatching = diag.watchPending('FilePicker.pickFile');
     final PlatformFile? file;
     try {
       file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: const ['xlsx'],
+        webOptions: pickerWebOptions(),
       );
     } on Object catch (e) {
       diag.log('FilePicker.pickFile THREW ${e.runtimeType}: $e');

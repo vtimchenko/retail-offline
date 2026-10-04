@@ -18,16 +18,35 @@ enum PickerAbVariant {
   /// Exactly what `main` does (control).
   baseline('baseline'),
 
-  /// `HTMLInputElement.prototype.click` is wrapped by a pass-through function.
-  clickWrapper('click-wrapper');
+  /// A/B 1: `HTMLInputElement.prototype.click` is wrapped by a pass-through
+  /// function. Real iPhone result: PENDING.
+  clickWrapper('click-wrapper', wrapsClick: true),
 
-  const PickerAbVariant(this.label);
+  /// A/B 2: the same wrapper, plus no-op `input`/`change`/`cancel` listeners
+  /// registered on the file input right before the original click.
+  clickWrapperListeners(
+    'click-wrapper+listeners',
+    wrapsClick: true,
+    addsInputListeners: true,
+  );
+
+  const PickerAbVariant(
+    this.label, {
+    this.wrapsClick = false,
+    this.addsInputListeners = false,
+  });
 
   final String label;
 
+  /// Whether `HTMLInputElement.prototype.click` is wrapped.
+  final bool wrapsClick;
+
+  /// Whether the wrapper also registers the no-op input listeners.
+  final bool addsInputListeners;
+
   static const String _requested = String.fromEnvironment(
     'PICKER_AB_VARIANT',
-    defaultValue: 'click-wrapper',
+    defaultValue: 'click-wrapper+listeners',
   );
 
   /// Unknown values fall back to [baseline] so a typo can never silently
@@ -42,7 +61,7 @@ enum PickerAbVariant {
 /// based on.
 const String pickerAbBuild = String.fromEnvironment(
   'PICKER_AB_BUILD',
-  defaultValue: 'ab1-b30a312',
+  defaultValue: 'ab2-b30a312',
 );
 
 enum PickerAbState { idle, pending, file, nullResult, error }
@@ -132,7 +151,7 @@ class PickerAbMarker extends StatelessWidget {
 
   String get _variantLine {
     final variant = PickerAbVariant.current;
-    if (variant != PickerAbVariant.clickWrapper) return variant.label;
+    if (!variant.wrapsClick) return variant.label;
     if (wrapperProblem != null) {
       return '${variant.label} (INSTALL FAILED: $wrapperProblem)';
     }

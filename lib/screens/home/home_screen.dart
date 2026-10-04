@@ -43,7 +43,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // TEMPORARY A/B (iOS picker investigation).
   final PickerAbProbe _abProbe = PickerAbProbe();
-  final ClickWrapper _abClickWrapper = ClickWrapper();
+  final ClickWrapper _abClickWrapper = ClickWrapper(
+    withListeners: PickerAbVariant.current.addsInputListeners,
+  );
 
   /// Below this width the two cards are stacked.
   static const double _wideBreakpoint = 720;
@@ -59,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
           localFiles: ProbedLocalFileService(_abProbe), // TEMPORARY A/B
         );
     // TEMPORARY A/B: installed once, before any tap, like the old observer.
-    if (PickerAbVariant.current == PickerAbVariant.clickWrapper) {
+    if (PickerAbVariant.current.wrapsClick) {
       _abClickWrapper.install();
     }
   }

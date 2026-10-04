@@ -2,6 +2,10 @@
 
 /// There is no `HTMLInputElement` outside the browser.
 class ClickWrapper {
+  ClickWrapper({this.withListeners = false});
+
+  final bool withListeners;
+
   bool get isInstalled => false;
 
   /// Why [install] did not install anything (shown in the A/B marker).

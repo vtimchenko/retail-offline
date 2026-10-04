@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:retail_offline/core/errors/import_exception.dart';
 import 'package:retail_offline/models/imported_file.dart';
 import 'package:retail_offline/services/file/local_file_service.dart';
+import 'package:retail_offline/services/file/picked_bytes.dart';
 
 import '../support/fixtures.dart';
 

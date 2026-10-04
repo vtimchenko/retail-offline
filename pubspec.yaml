@@ -39,6 +39,10 @@ dependencies:
   # exported by file_picker_web, not by file_picker. Same major as file_picker
   # 13.1.0 requires (^4.0.0); the resolved version does not change.
   file_picker_web: ^4.0.0
+  # Direct on purpose: the app-owned browser file picker
+  # (lib/services/file/xlsx_browser_picker_web.dart) uses it. Already resolved
+  # transitively at this version.
+  web: ^1.1.1
   http: ^1.6.0
   archive: ^4.3.0
   xml: ^7.1.0

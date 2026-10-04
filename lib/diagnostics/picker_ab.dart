@@ -14,9 +14,20 @@ import '../services/file/local_file_service.dart';
 /// Which experiment this build is. Chosen at build time:
 /// `--dart-define=PICKER_AB_VARIANT=baseline`. The default is the variant
 /// under test, because the deploy workflow cannot pass defines.
+///
+/// Since the app-owned browser picker became the default
+/// (`LocalFileService`), EVERY variant picks through it; the wrapper variants
+/// below are therefore "app picker + diagnostic wrapper" combinations. Only
+/// [appPicker] is the production configuration under real-device test.
 enum PickerAbVariant {
-  /// Exactly what `main` does (control).
+  /// The app-owned picker with no diagnostics installed (same runtime path as
+  /// [appPicker]; kept only so the old define keeps working).
   baseline('baseline'),
+
+  /// Production candidate: the app-owned picker and NOTHING else. No
+  /// `HTMLInputElement.prototype.click` wrapper, no diagnostic listeners, no
+  /// diagnostic retention Set, no prototype patching of any kind.
+  appPicker('app-picker'),
 
   /// A/B 1: `HTMLInputElement.prototype.click` is wrapped by a pass-through
   /// function. Real iPhone result: PENDING.
@@ -60,7 +71,7 @@ enum PickerAbVariant {
 
   static const String _requested = String.fromEnvironment(
     'PICKER_AB_VARIANT',
-    defaultValue: 'click-wrapper+listeners+retain',
+    defaultValue: 'app-picker',
   );
 
   /// Unknown values fall back to [baseline] so a typo can never silently
@@ -75,7 +86,7 @@ enum PickerAbVariant {
 /// based on.
 const String pickerAbBuild = String.fromEnvironment(
   'PICKER_AB_BUILD',
-  defaultValue: 'ab3-b30a312',
+  defaultValue: 'prod-picker1-3742535',
 );
 
 enum PickerAbState { idle, pending, file, nullResult, error }
@@ -165,7 +176,7 @@ class PickerAbMarker extends StatelessWidget {
 
   String get _variantLine {
     final variant = PickerAbVariant.current;
-    if (!variant.wrapsClick) return variant.label;
+    if (!variant.wrapsClick) return '${variant.label} (no prototype wrapper)';
     if (wrapperProblem != null) {
       return '${variant.label} (INSTALL FAILED: $wrapperProblem)';
     }

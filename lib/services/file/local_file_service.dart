@@ -1,13 +1,10 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../core/constants/import_messages.dart';
 import '../../core/errors/import_exception.dart';
 import '../../models/imported_file.dart';
-import 'web_picker_options.dart';
-
-/// A file chosen in the picker: name plus contents (no filesystem path).
-typedef PickedBytes = ({String name, Uint8List bytes});
+import 'picked_bytes.dart';
+import 'xlsx_browser_picker.dart';
 
 /// Lets the user choose an `.xlsx` file on the device and returns it as an
 /// [ImportedFile].
@@ -15,9 +12,9 @@ typedef PickedBytes = ({String name, Uint8List bytes});
 /// Web-first: works with bytes only, never with paths or `dart:io`.
 class LocalFileService {
   /// [picker] can be replaced in tests; it returns `null` when the user
-  /// cancels.
+  /// cancels. The default is the app-owned browser picker.
   const LocalFileService({Future<PickedBytes?> Function()? picker})
-    : _picker = picker ?? _pickWithFilePicker;
+    : _picker = picker ?? pickXlsxFromBrowser;
 
   final Future<PickedBytes?> Function() _picker;
 
@@ -59,17 +56,5 @@ class LocalFileService {
       );
     }
     return ImportedFile(name: name, bytes: bytes, source: FileSource.local);
-  }
-
-  static Future<PickedBytes?> _pickWithFilePicker() async {
-    final file = await FilePicker.pickFile(
-      type: FileType.custom,
-      allowedExtensions: const ['xlsx'],
-      // Without this, iOS Safari/PWA selections are lost; see
-      // `pickerWebOptions`.
-      webOptions: pickerWebOptions(),
-    );
-    if (file == null) return null;
-    return (name: file.name, bytes: await file.readAsBytes());
   }
 }

@@ -46,7 +46,7 @@ Future<PickedBytes?> pickXlsxFromBrowser() {
 /// Safari and the installed PWA, a file input that nothing else referenced
 /// left the picker Future pending after the user chose a file, while
 /// explicitly retaining the same detached input until `change`/`cancel`
-/// delivered the file (see the A/B diagnostics in `lib/diagnostics/`). We
+/// delivered the file (controlled A/B experiments, since removed). We
 /// observed that behaviour; we have not established the browser-internal
 /// cause. Do not replace this with a listener-only reference cycle
 /// (input -> listener -> input): that variant was tested and did not help.

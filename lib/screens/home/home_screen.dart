@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../models/store.dart';
 import '../../repositories/session_data_repository.dart';
 import '../../widgets/centered_content.dart';
+import '../orders/orders_screen.dart';
 import 'home_controller.dart';
 import 'widgets/drive_link_dialog.dart';
 import 'widgets/file_slot_card.dart';
@@ -12,7 +13,7 @@ import 'widgets/import_summary_card.dart';
 
 /// Main screen of the app for the selected [store]: the user provides the
 /// orders and inventory files, which are validated and loaded into the
-/// session repository. Order search comes later.
+/// session repository. A successful import opens the orders list.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -39,9 +40,6 @@ class _HomeScreenState extends State<HomeScreen> {
   late final HomeController _controller;
   late final bool _ownsController;
 
-  /// Below this width the two cards are stacked.
-  static const double _wideBreakpoint = 720;
-
   @override
   void initState() {
     super.initState();
@@ -63,6 +61,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final url = await showDriveLinkDialog(context);
     if (url == null) return;
     await _controller.pickGoogleDriveFile(id, url);
+  }
+
+  Future<void> _loadAndOpenOrders() async {
+    final committed = await _controller.loadData();
+    if (!mounted || !committed) return;
+    await _openOrders();
+  }
+
+  Future<void> _openOrders() {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OrdersScreen(
+          store: widget.store,
+          repository: _controller.repository,
+        ),
+      ),
+    );
   }
 
   @override
@@ -119,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 20),
         LayoutBuilder(
           builder: (context, constraints) {
-            if (constraints.maxWidth >= _wideBreakpoint) {
+            if (constraints.maxWidth >= AppConstants.wideLayoutBreakpoint) {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -138,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 20),
         FilledButton(
           key: const Key('load-data'),
-          onPressed: c.canLoad ? c.loadData : null,
+          onPressed: c.canLoad ? _loadAndOpenOrders : null,
           child: c.isImporting
               ? const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -168,6 +183,12 @@ class _HomeScreenState extends State<HomeScreen> {
         if (c.summary != null) ...[
           const SizedBox(height: 20),
           ImportSummaryCard(summary: c.summary!),
+          const SizedBox(height: 12),
+          FilledButton(
+            key: const Key('view-orders'),
+            onPressed: c.isBusy ? null : _openOrders,
+            child: const Text(AppStrings.viewOrders),
+          ),
         ],
       ],
     );

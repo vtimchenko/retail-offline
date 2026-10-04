@@ -135,7 +135,7 @@ void main() {
         expect(c.inventory.file!.source, FileSource.local);
         expect(c.canLoad, isTrue);
 
-        await c.loadData();
+        expect(await c.loadData(), isTrue);
         expect(c.summary!.orders, 3);
       },
     );
@@ -153,7 +153,7 @@ void main() {
       );
       await c.pickLocalFile(ImportSlotId.orders);
       await c.pickLocalFile(ImportSlotId.inventory);
-      await c.loadData();
+      expect(await c.loadData(), isTrue);
 
       expect(repo.hasData, isTrue);
       expect(c.summary!.orders, 3);
@@ -182,7 +182,7 @@ void main() {
       );
       await c.pickLocalFile(ImportSlotId.orders);
       await c.pickLocalFile(ImportSlotId.inventory);
-      await c.loadData();
+      expect(await c.loadData(), isFalse);
 
       expect(repo.hasData, isFalse);
       expect(repo.orderCount, 0);
@@ -206,7 +206,7 @@ void main() {
       );
       await c.pickLocalFile(ImportSlotId.orders);
       await c.pickLocalFile(ImportSlotId.inventory);
-      await c.loadData();
+      expect(await c.loadData(), isFalse);
 
       expect(repo.hasData, isFalse);
       expect(repo.inventoryCount, 0);
@@ -231,13 +231,13 @@ void main() {
       );
       await c.pickLocalFile(ImportSlotId.orders);
       await c.pickLocalFile(ImportSlotId.inventory);
-      await c.loadData();
+      expect(await c.loadData(), isTrue);
       final before = repo.orders;
       expect(repo.orderCount, 3);
 
       await c.pickLocalFile(ImportSlotId.orders);
       await c.pickLocalFile(ImportSlotId.inventory);
-      await c.loadData();
+      expect(await c.loadData(), isFalse);
 
       expect(identical(repo.orders, before), isTrue);
       expect(repo.orderCount, 3);
@@ -265,7 +265,7 @@ void main() {
       );
       await c.pickLocalFile(ImportSlotId.orders);
       await c.pickLocalFile(ImportSlotId.inventory);
-      await c.loadData();
+      expect(await c.loadData(), isFalse);
 
       expect(repo.hasData, isFalse);
       expect(c.orders.error, contains('CustomerPhone'));
@@ -281,7 +281,7 @@ void main() {
       );
       await c.pickLocalFile(ImportSlotId.orders);
       await c.pickLocalFile(ImportSlotId.inventory);
-      await c.loadData();
+      expect(await c.loadData(), isTrue);
       expect(c.canLoad, isFalse);
     });
 
@@ -292,7 +292,7 @@ void main() {
         picks: [(name: 'orders.xlsx', bytes: _goodOrders)],
       );
       await c.pickLocalFile(ImportSlotId.orders);
-      await c.loadData();
+      expect(await c.loadData(), isFalse);
       expect(repo.hasData, isFalse);
     });
   });

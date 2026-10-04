@@ -179,8 +179,10 @@ class HomeController extends ChangeNotifier {
 
   /// Parses and validates both files completely, and only then updates the
   /// repository. If anything fails, the repository stays exactly as it was.
-  Future<void> loadData() async {
-    if (!canLoad) return;
+  ///
+  /// Returns `true` only when this call committed new data.
+  Future<bool> loadData() async {
+    if (!canLoad) return false;
     final ordersFile = _orders.file!;
     final inventoryFile = _inventory.file!;
 
@@ -208,12 +210,15 @@ class HomeController extends ChangeNotifier {
       _summary = ImportSummary.of(repository);
       _orders = _orders.copyWith(isBusy: false, isLoaded: true);
       _inventory = _inventory.copyWith(isBusy: false, isLoaded: true);
+      return true;
     } on ImportException catch (e) {
       debugPrint('Import failed at ${stage.name}: $e');
       _finishWithError(stage, e.message);
+      return false;
     } on Object catch (e, st) {
       debugPrint('Unexpected import failure at ${stage.name}: $e\n$st');
       _finishWithError(stage, ImportMessages.unexpected);
+      return false;
     } finally {
       _isImporting = false;
       if (!_disposed) notifyListeners();

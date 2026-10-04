@@ -5,6 +5,12 @@ abstract final class AppConstants {
 
   /// Maximum width of centered content on wide screens.
   static const double formMaxWidth = 560;
+
+  /// Width at which stacked cards give way to a side-by-side or table layout.
+  static const double wideLayoutBreakpoint = 720;
+
+  /// Maximum width of the orders list and order details on wide screens.
+  static const double ordersMaxWidth = 1100;
 }
 
 abstract final class AppStrings {
@@ -61,4 +67,28 @@ abstract final class AppStrings {
       'і оберіть кнопкою «Обрати файл».';
   static const String cancel = 'Скасувати';
   static const String getFile = 'Отримати файл';
+  static const String viewOrders = 'Переглянути замовлення';
+
+  // ---- Orders ----
+  static const String ordersScreenTitle = 'Замовлення';
+  static const String invoiceDateLabel = 'Дата';
+  static const String invoiceNumberLabel = 'Накладна';
+  static const String orderNumberLabel = 'Номер замовлення';
+  static const String customerLabel = 'Клієнт';
+  static const String customerPhoneLabel = 'Телефон';
+  static const String orderNumberSearchLabel = 'Номер замовлення';
+  static const String orderNumberSearchHint = 'Пошук за номером…';
+  static const String phoneSearchLabel = 'Телефон клієнта';
+  static const String phoneSearchHint = 'Пошук за телефоном…';
+  static const String ordersEmptyTitle = 'Замовлень немає';
+  static const String ordersEmptyMessage =
+      'У завантажених даних немає жодного замовлення.';
+  static const String ordersNoMatchTitle = 'Нічого не знайдено';
+  static const String ordersNoMatchMessage =
+      'Жодне замовлення не відповідає пошуку.';
+  static const String orderItemsTitle = 'Товари';
+  static const String productLabel = 'Товар';
+  static const String quantityLabel = 'Кількість';
+  static const String priceLabel = 'Ціна';
+  static const String amountLabel = 'Сума';
 }

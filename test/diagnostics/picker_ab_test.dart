@@ -10,6 +10,16 @@ import 'package:retail_offline/screens/home/home_screen.dart';
 Uint8List get _zip => Uint8List.fromList([0x50, 0x4B, 3, 4, 0]);
 
 void main() {
+  test('the default variant is the app-owned picker with no diagnostics', () {
+    const v = PickerAbVariant.appPicker;
+    expect(PickerAbVariant.current, v);
+    expect(v.label, 'app-picker');
+    expect(v.wrapsClick, isFalse);
+    expect(v.addsInputListeners, isFalse);
+    expect(v.retainsInput, isFalse);
+    expect(pickerAbBuild, startsWith('prod-picker1-'));
+  });
+
   group('ProbedLocalFileService reports how the picker ended', () {
     test('PENDING while the picker is open, then FILE', () async {
       final probe = PickerAbProbe();

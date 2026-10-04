@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
-import '../../diagnostics/click_wrapper.dart'; // TEMPORARY A/B
-import '../../diagnostics/picker_ab.dart'; // TEMPORARY A/B
 import '../../models/store.dart';
 import '../../repositories/session_data_repository.dart';
 import '../../widgets/centered_content.dart';
@@ -41,13 +39,6 @@ class _HomeScreenState extends State<HomeScreen> {
   late final HomeController _controller;
   late final bool _ownsController;
 
-  // TEMPORARY A/B (iOS picker investigation).
-  final PickerAbProbe _abProbe = PickerAbProbe();
-  final ClickWrapper _abClickWrapper = ClickWrapper(
-    withListeners: PickerAbVariant.current.addsInputListeners,
-    retainInputs: PickerAbVariant.current.retainsInput,
-  );
-
   /// Below this width the two cards are stacked.
   static const double _wideBreakpoint = 720;
 
@@ -59,17 +50,11 @@ class _HomeScreenState extends State<HomeScreen> {
         widget.controller ??
         HomeController(
           repository: widget.repository ?? InMemorySessionDataRepository(),
-          localFiles: ProbedLocalFileService(_abProbe), // TEMPORARY A/B
         );
-    // TEMPORARY A/B: installed once, before any tap, like the old observer.
-    if (PickerAbVariant.current.wrapsClick) {
-      _abClickWrapper.install();
-    }
   }
 
   @override
   void dispose() {
-    _abClickWrapper.uninstall(); // TEMPORARY A/B
     if (_ownsController) _controller.dispose();
     super.dispose();
   }
@@ -184,12 +169,6 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 20),
           ImportSummaryCard(summary: c.summary!),
         ],
-        // TEMPORARY A/B (iOS picker investigation).
-        PickerAbMarker(
-          probe: _abProbe,
-          wrapperActive: _abClickWrapper.isInstalled,
-          wrapperProblem: _abClickWrapper.problem,
-        ),
       ],
     );
   }

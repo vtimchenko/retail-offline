@@ -15,6 +15,3 @@ import 'package:file_picker_web/file_picker_web.dart' show FilePickerWebOptions;
 /// the pick, no read stream).
 WebOptions pickerWebOptions() =>
     const FilePickerWebOptions(cancelUploadOnWindowBlur: false);
-
-/// Short description for the diagnostic log.
-const String pickerWebOptionsLabel = 'cancelUploadOnWindowBlur=false';

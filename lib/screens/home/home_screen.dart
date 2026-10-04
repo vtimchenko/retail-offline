@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
+import '../../diagnostics/picker_diagnostics.dart';
 import '../../models/store.dart';
 import '../../repositories/session_data_repository.dart';
 import '../../widgets/centered_content.dart';
@@ -9,6 +10,7 @@ import 'home_controller.dart';
 import 'widgets/drive_link_dialog.dart';
 import 'widgets/file_slot_card.dart';
 import 'widgets/import_summary_card.dart';
+import 'widgets/picker_diagnostics_panel.dart';
 
 /// Main screen of the app for the selected [store]: the user provides the
 /// orders and inventory files, which are validated and loaded into the
@@ -51,10 +53,12 @@ class _HomeScreenState extends State<HomeScreen> {
         HomeController(
           repository: widget.repository ?? InMemorySessionDataRepository(),
         );
+    PickerDiagnostics.instance.attach(); // TEMPORARY DIAGNOSTICS
   }
 
   @override
   void dispose() {
+    PickerDiagnostics.instance.detach(); // TEMPORARY DIAGNOSTICS
     if (_ownsController) _controller.dispose();
     super.dispose();
   }
@@ -169,6 +173,9 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 20),
           ImportSummaryCard(summary: c.summary!),
         ],
+        // TEMPORARY DIAGNOSTICS (iOS local file picker).
+        const SizedBox(height: 24),
+        const PickerDiagnosticsPanel(),
       ],
     );
   }

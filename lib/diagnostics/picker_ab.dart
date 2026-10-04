@@ -28,12 +28,23 @@ enum PickerAbVariant {
     'click-wrapper+listeners',
     wrapsClick: true,
     addsInputListeners: true,
+  ),
+
+  /// A/B 3: A/B 2, plus the file input is kept in a rooted JS `Set` from
+  /// before the original click until its `change` or `cancel` event. Real
+  /// iPhone result of A/B 1 and A/B 2: PENDING.
+  clickWrapperListenersRetain(
+    'click-wrapper+listeners+retain',
+    wrapsClick: true,
+    addsInputListeners: true,
+    retainsInput: true,
   );
 
   const PickerAbVariant(
     this.label, {
     this.wrapsClick = false,
     this.addsInputListeners = false,
+    this.retainsInput = false,
   });
 
   final String label;
@@ -44,9 +55,12 @@ enum PickerAbVariant {
   /// Whether the wrapper also registers the no-op input listeners.
   final bool addsInputListeners;
 
+  /// Whether the wrapper also retains the input until change/cancel.
+  final bool retainsInput;
+
   static const String _requested = String.fromEnvironment(
     'PICKER_AB_VARIANT',
-    defaultValue: 'click-wrapper+listeners',
+    defaultValue: 'click-wrapper+listeners+retain',
   );
 
   /// Unknown values fall back to [baseline] so a typo can never silently
@@ -61,7 +75,7 @@ enum PickerAbVariant {
 /// based on.
 const String pickerAbBuild = String.fromEnvironment(
   'PICKER_AB_BUILD',
-  defaultValue: 'ab2-b30a312',
+  defaultValue: 'ab3-b30a312',
 );
 
 enum PickerAbState { idle, pending, file, nullResult, error }

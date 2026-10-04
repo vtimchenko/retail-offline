@@ -23,7 +23,22 @@
 //     never read `input.files`, never log, never touch events.
 //   * the listeners are never removed.
 //
-// In both variants uninstall restores the previous state exactly like the old
+// Variant `click-wrapper+listeners+retain` (A/B 3, `retainInputs: true`):
+//   * everything from A/B 2, plus: before the original click the file input
+//     is added to a JavaScript `Set` (`retained`). The Set is referenced by
+//     the wrapper closure, which hangs off `HTMLInputElement.prototype`, so
+//     it is rooted from the global object and the input cannot be garbage
+//     collected while it is in the Set;
+//   * the `change` and `cancel` listeners (and only those) remove the input
+//     from the Set. The `input` listener stays a no-op. Nothing else releases
+//     it: no timer, no `requestAnimationFrame`, no focus/blur/visibility
+//     listener, no rebuild. If neither `change` nor `cancel` ever arrives the
+//     input stays in the Set for the rest of the page session. That is a
+//     deliberate, temporary leak for this experiment and must never become
+//     production code.
+//   * the input is not attached to, or removed from, the DOM.
+//
+// In all variants uninstall restores the previous state exactly like the old
 // `stop()`: put the old function back if the prototype had its own `click`,
 // delete the own property otherwise.
 //
@@ -36,11 +51,17 @@
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 class ClickWrapper {
-  ClickWrapper({this.withListeners = false});
+  ClickWrapper({this.withListeners = false, this.retainInputs = false});
 
   /// Also register the no-op `input`/`change`/`cancel` listeners.
   final bool withListeners;
+
+  /// Also keep each file input in a rooted `Set` until `change`/`cancel`.
+  /// Implies the listeners.
+  final bool retainInputs;
 
   JSObject? _handle;
   String? _problem;
@@ -57,11 +78,26 @@ class ClickWrapper {
         'eval'.toJS,
         _script.toJS,
       );
-      _handle = install.callAsFunction(null, withListeners.toJS) as JSObject?;
+      _handle = install.callAsFunction(
+        null,
+        withListeners.toJS,
+        retainInputs.toJS,
+      ) as JSObject?;
     } on Object catch (e) {
       _problem = '${e.runtimeType}';
     }
   }
+
+  /// Number of inputs currently retained. For tests only: nothing in the app
+  /// calls this.
+  @visibleForTesting
+  int get retainedCount =>
+      _handle?.callMethod<JSNumber>('retainedCount'.toJS).toDartInt ?? 0;
+
+  /// Whether [input] is currently retained. For tests only.
+  @visibleForTesting
+  bool isRetained(JSObject input) =>
+      _handle?.callMethod<JSBoolean>('isRetained'.toJS, input).toDart ?? false;
 
   void uninstall() {
     final handle = _handle;
@@ -76,12 +112,31 @@ class ClickWrapper {
 
   static const String _script = r'''
 (function () {
-  return function (withListeners) {
+  return function (withListeners, retainInputs) {
     var proto = HTMLInputElement.prototype;
     var hadOwnClick = Object.prototype.hasOwnProperty.call(proto, 'click');
     var prevClick = proto.click;
+    // Rooted through the wrapper closure below (and thereby through
+    // HTMLInputElement.prototype). Only created when retainInputs is true.
+    var retained = retainInputs ? new Set() : null;
 
-    if (withListeners) {
+    if (retainInputs) {
+      proto.click = function () {
+        var input = this;
+        if (input.type === 'file') {
+          retained.add(input);
+          ['input', 'change', 'cancel'].forEach(function (type) {
+            input.addEventListener(
+              type,
+              type === 'input'
+                ? function () { void input; }
+                : function () { retained.delete(input); }
+            );
+          });
+        }
+        return prevClick.apply(this, arguments);
+      };
+    } else if (withListeners) {
       proto.click = function () {
         var input = this;
         if (input.type === 'file') {
@@ -98,6 +153,8 @@ class ClickWrapper {
     }
 
     return {
+      retainedCount: function () { return retained ? retained.size : 0; },
+      isRetained: function (input) { return retained ? retained.has(input) : false; },
       uninstall: function () {
         if (hadOwnClick) { proto.click = prevClick; } else { delete proto.click; }
       }

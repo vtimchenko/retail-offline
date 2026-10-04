@@ -45,6 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final PickerAbProbe _abProbe = PickerAbProbe();
   final ClickWrapper _abClickWrapper = ClickWrapper(
     withListeners: PickerAbVariant.current.addsInputListeners,
+    retainInputs: PickerAbVariant.current.retainsInput,
   );
 
   /// Below this width the two cards are stacked.

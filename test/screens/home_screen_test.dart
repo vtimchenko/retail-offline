@@ -9,6 +9,7 @@ import 'package:retail_offline/models/store.dart';
 import 'package:retail_offline/repositories/session_data_repository.dart';
 import 'package:retail_offline/screens/home/home_controller.dart';
 import 'package:retail_offline/screens/home/home_screen.dart';
+import 'package:retail_offline/screens/orders/orders_screen.dart';
 import 'package:retail_offline/services/file/google_drive_file_service.dart';
 import 'package:retail_offline/services/file/local_file_service.dart';
 
@@ -177,22 +178,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.hasData, isTrue);
-    expect(find.text('Дані завантажено'), findsOneWidget);
-    expect(find.text('Замовлень: ${repo.orderCount}'), findsOneWidget);
-    expect(
-      find.text('Товарних позицій: ${repo.orderItemCount}'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('Записів залишків: ${repo.inventoryCount}'),
-      findsOneWidget,
-    );
-    // Sample data: 5 Excel rows form 3 orders.
     expect(repo.orderCount, 3);
     expect(repo.orderItemCount, 5);
-    expect(find.text('Завантажено'), findsNWidgets(2));
-    // Stays on the home screen.
+    expect(repo.inventoryCount, 4);
+    expect(find.byType(OrdersScreen), findsOneWidget);
+    expect(find.text('900000001'), findsOneWidget);
+    expect(find.text('900000002'), findsOneWidget);
+    expect(find.text('900000003'), findsOneWidget);
+    expect(find.text('Товар B1'), findsNothing);
+    expect(find.textContaining('1290564103789190763'), findsNothing);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
     expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.byType(OrdersScreen), findsNothing);
+    expect(find.text('Дані завантажено'), findsOneWidget);
+    expect(find.text('Замовлень: 3'), findsOneWidget);
+    expect(find.text('Товарних позицій: 5'), findsOneWidget);
+    expect(find.text('Записів залишків: 4'), findsOneWidget);
+    expect(find.text('Завантажено'), findsNWidgets(2));
+
+    await tester.tap(find.byKey(const Key('view-orders')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OrdersScreen), findsOneWidget);
   });
 
   testWidgets(
@@ -218,6 +227,7 @@ void main() {
       expect(find.byKey(const Key('inventory-error')), findsOneWidget);
       expect(find.byKey(const Key('orders-error')), findsNothing);
       expect(find.text('Дані завантажено'), findsNothing);
+      expect(find.byType(OrdersScreen), findsNothing);
     },
   );
 
@@ -335,7 +345,10 @@ void main() {
     });
 
     await _pumpHome(tester, HomeController(repository: repo));
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.byType(OrdersScreen), findsNothing);
     expect(find.text('Замовлень: 3'), findsOneWidget);
     expect(find.text('Товарних позицій: 5'), findsOneWidget);
+    expect(find.text('Переглянути замовлення'), findsOneWidget);
   });
 }

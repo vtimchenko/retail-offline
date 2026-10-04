@@ -23,11 +23,11 @@ String _eval(String script) =>
 ///
 /// The recorder is the test's own; the code under test never logs. Returns
 /// the function that restores the browser.
-JSFunction _fakeChooser() {
+JSFunction _fakeChooser({bool answer = true}) {
   final install = globalContext.callMethod<JSFunction>(
     'eval'.toJS,
     r'''
-(function () {
+(function (answer) {
   var proto = HTMLInputElement.prototype;
   var had = Object.prototype.hasOwnProperty.call(proto, 'click');
   var prev = proto.click;
@@ -46,6 +46,8 @@ JSFunction _fakeChooser() {
     var input = this;
     globalThis.__abLog.push('click');
     globalThis.__abThis = input;
+    globalThis.__abRetainedAtClick = globalThis.__abIsRetained
+        ? globalThis.__abIsRetained(input) : null;
     globalThis.__abClicks.push({
       type: input.type,
       accept: input.accept,
@@ -54,6 +56,7 @@ JSFunction _fakeChooser() {
       hasParent: input.parentNode != null,
       args: arguments.length
     });
+    if (!answer) return;
     setTimeout(function () {
       var dt = new DataTransfer();
       dt.items.add(new File([new Uint8Array([80, 75, 3, 4])], 'a.xlsx'));
@@ -69,7 +72,15 @@ JSFunction _fakeChooser() {
 '''
         .toJS,
   );
-  return install.callAsFunction() as JSFunction;
+  return install.callAsFunction(null, answer.toJS) as JSFunction;
+}
+
+/// Exposes `wrapper.isRetained` to the fake chooser, so the click can record
+/// whether its receiver was already retained at that moment.
+void _recordRetainedAtClick(ClickWrapper wrapper) {
+  globalContext['__abIsRetained'] = ((JSObject input) => wrapper.isRetained(
+    input,
+  )).toJS;
 }
 
 bool _clickIsOwnProperty() =>
@@ -90,6 +101,7 @@ typedef _Pick = ({
   String log,
   String clicks,
   bool domTouched,
+  int retainedAfter,
 });
 
 Future<_Pick> _pickOnce(ClickWrapper? wrapper) async {
@@ -109,6 +121,7 @@ Future<_Pick> _pickOnce(ClickWrapper? wrapper) async {
       clicks: _eval('JSON.stringify(globalThis.__abClicks)'),
       domTouched:
           _eval('String(document.body.childElementCount)') != bodyChildren,
+      retainedAfter: wrapper?.retainedCount ?? 0,
     );
   } finally {
     wrapper?.uninstall();
@@ -119,13 +132,18 @@ Future<_Pick> _pickOnce(ClickWrapper? wrapper) async {
 void main() {
   setUpAll(() => FilePickerWeb.registerWith(webPluginRegistrar));
 
-  for (final withListeners in [false, true]) {
-    final name = withListeners ? 'click-wrapper+listeners' : 'click-wrapper';
+  final modes = <String, ClickWrapper Function()>{
+    'click-wrapper': ClickWrapper.new,
+    'click-wrapper+listeners': () => ClickWrapper(withListeners: true),
+    'click-wrapper+listeners+retain': () =>
+        ClickWrapper(withListeners: true, retainInputs: true),
+  };
 
+  for (final MapEntry(key: name, value: create) in modes.entries) {
     test('$name: install puts a wrapper in place and uninstall restores', () {
       final before = _clickFunction();
       final hadOwn = _clickIsOwnProperty();
-      final wrapper = ClickWrapper(withListeners: withListeners)..install();
+      final wrapper = create()..install();
 
       expect(wrapper.isInstalled, isTrue);
       expect(wrapper.problem, isNull);
@@ -218,4 +236,160 @@ void main() {
       }
     });
   });
+
+  group('click-wrapper+listeners+retain', () {
+    ClickWrapper create() =>
+        ClickWrapper(withListeners: true, retainInputs: true);
+
+    test(
+      'registers the same listeners as A/B 2 and picks the same file',
+      () async {
+        final listeners = await _pickOnce(ClickWrapper(withListeners: true));
+        final retain = await _pickOnce(create());
+
+        // Retention adds no addEventListener call: same order as A/B 2, and
+        // exactly one original click.
+        expect(retain.log, listeners.log);
+        expect(
+          retain.log,
+          '["add:change:2","add:cancel:2",'
+          '"add:input:2","add:change:2","add:cancel:2","click"]',
+        );
+        // Desktop Chrome selection still works and returns the same bytes.
+        expect(retain.name, listeners.name);
+        expect(retain.bytes, [80, 75, 3, 4]);
+        // Same input state, still detached, no DOM mutation.
+        expect(retain.clicks, listeners.clicks);
+        expect(retain.clicks, contains('"connected":false,"hasParent":false'));
+        expect(retain.domTouched, isFalse);
+        // The real change event released the input.
+        expect(retain.retainedAfter, 0);
+      },
+    );
+
+    test('retains before the click; only change/cancel release it', () async {
+      final restore = _fakeChooser(answer: false);
+      final wrapper = create()..install();
+      _recordRetainedAtClick(wrapper);
+      try {
+        // Count every timer-ish call made while clicking.
+        final result = _eval(r'''
+(function () {
+  var timerCalls = 0;
+  var orig = {};
+  ['setTimeout', 'setInterval', 'requestAnimationFrame', 'queueMicrotask']
+    .forEach(function (n) {
+      orig[n] = globalThis[n];
+      globalThis[n] = function () { timerCalls++; return orig[n].apply(this, arguments); };
+    });
+  var i = document.createElement('input');
+  i.type = 'file';
+  var connectedBefore = i.isConnected;
+  i.click('x', 2);
+  Object.keys(orig).forEach(function (n) { globalThis[n] = orig[n]; });
+  globalThis.__abInput = i;
+  return JSON.stringify({
+    connectedBefore: connectedBefore,
+    connectedAfter: i.isConnected,
+    clickCount: globalThis.__abClicks.length,
+    sameReceiver: globalThis.__abThis === i,
+    firstArgs: globalThis.__abClicks[0].args,
+    retainedAtClick: globalThis.__abRetainedAtClick,
+    timerCalls: timerCalls
+  });
+})()
+''');
+        expect(
+          result,
+          '{"connectedBefore":false,"connectedAfter":false,"clickCount":1,'
+          '"sameReceiver":true,"firstArgs":2,"retainedAtClick":true,'
+          '"timerCalls":0}',
+        );
+        final input =
+            globalContext['__abInput'] as JSObject; // ignore: unnecessary_cast
+        expect(wrapper.isRetained(input), isTrue);
+        expect(wrapper.retainedCount, 1);
+
+        // `input` is not terminal.
+        input.callMethod('dispatchEvent'.toJS, _event('input'));
+        expect(wrapper.isRetained(input), isTrue);
+
+        // Time alone does not release it either (no timeout of any kind).
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        expect(wrapper.isRetained(input), isTrue);
+
+        // `change` is terminal.
+        input.callMethod('dispatchEvent'.toJS, _event('change'));
+        expect(wrapper.isRetained(input), isFalse);
+        expect(wrapper.retainedCount, 0);
+      } finally {
+        wrapper.uninstall();
+        restore.callAsFunction();
+      }
+    });
+
+    test('cancel releases the input', () {
+      final restore = _fakeChooser(answer: false);
+      final wrapper = create()..install();
+      try {
+        final input = globalContext.callMethod<JSObject>(
+          'eval'.toJS,
+          "(function(){var i=document.createElement('input');"
+                  "i.type='file';i.click();return i;})()"
+              .toJS,
+        );
+        expect(wrapper.isRetained(input), isTrue);
+        input.callMethod('dispatchEvent'.toJS, _event('cancel'));
+        expect(wrapper.isRetained(input), isFalse);
+      } finally {
+        wrapper.uninstall();
+        restore.callAsFunction();
+      }
+    });
+
+    test('a non-file input is neither retained nor given listeners', () {
+      final restore = _fakeChooser(answer: false);
+      final wrapper = create()..install();
+      try {
+        final text = globalContext.callMethod<JSObject>(
+          'eval'.toJS,
+          "(function(){var i=document.createElement('input');"
+                  "i.type='text';i.click();return i;})()"
+              .toJS,
+        );
+        expect(wrapper.isRetained(text), isFalse);
+        expect(wrapper.retainedCount, 0);
+      } finally {
+        wrapper.uninstall();
+        restore.callAsFunction();
+      }
+    });
+
+    // Test isolation: the Set lives inside one install() call, so a fresh
+    // wrapper never sees inputs retained by an earlier one, even if that one
+    // never got a change/cancel. Nothing outside the tests clears anything.
+    test('each install starts with nothing retained (isolation)', () {
+      final restore = _fakeChooser(answer: false);
+      final first = create()..install();
+      globalContext.callMethod<JSAny?>(
+        'eval'.toJS,
+        "(function(){var i=document.createElement('input');"
+                "i.type='file';i.click();})()"
+            .toJS,
+      );
+      expect(first.retainedCount, 1); // deliberately left pending
+      first.uninstall();
+
+      final second = create()..install();
+      try {
+        expect(second.retainedCount, 0);
+      } finally {
+        second.uninstall();
+        restore.callAsFunction();
+      }
+    });
+  });
 }
+
+JSObject _event(String type) =>
+    globalContext.callMethod<JSObject>('eval'.toJS, "new Event('$type')".toJS);

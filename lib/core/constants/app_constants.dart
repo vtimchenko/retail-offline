@@ -91,4 +91,37 @@ abstract final class AppStrings {
   static const String quantityLabel = 'Кількість';
   static const String priceLabel = 'Ціна';
   static const String amountLabel = 'Сума';
+
+  // ---- Serial selection ----
+  static const String completeService = 'Завершити обслуговування';
+  static const String serialsCorrect = 'Серійні номери вказані коректно';
+  static const String fulfilmentIncompleteTitle = 'Обслуговування не завершено';
+  static const String fulfilmentIncompleteIntro =
+      'Не для всіх товарів обрано потрібну кількість серійних номерів:';
+  static const String dialogOk = 'Гаразд';
+  static const String availableInventoryTitle = 'Доступні залишки';
+  static const String selectedSerialsTitle = 'Обрані серійні номери';
+  static const String addressLabel = 'Адреса';
+  static const String serialNumberLabel = 'Серійний номер';
+  static const String availableQuantityLabel = 'Доступно';
+  static const String selectedQuantityLabel = 'Обрано';
+  static const String requiredQuantityLabel = 'Потрібна кількість';
+  static const String serialSearchLabel = 'Пошук серійного номера';
+  static const String serialSearchHint = 'Пошук за серійним номером…';
+  static const String addSerial = 'Додати';
+  static const String removeSerial = 'Прибрати';
+  static const String noAvailableInventory =
+      'Немає доступних залишків для цього товару';
+  static const String serialNoMatch =
+      'Жоден серійний номер не відповідає пошуку.';
+  static const String noSelectedSerials = 'Серійні номери ще не обрані';
+
+  static String selectedOfRequired(int selected, int requiredQuantity) =>
+      'Обрано $selected з $requiredQuantity';
+
+  static String fulfilmentGapLine(
+    String product,
+    int requiredQuantity,
+    int selectedQuantity,
+  ) => '$product — потрібно $requiredQuantity, обрано $selectedQuantity';
 }

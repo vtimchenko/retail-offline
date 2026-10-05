@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:retail_offline/core/constants/import_messages.dart';
 import 'package:retail_offline/models/imported_file.dart';
+import 'package:retail_offline/models/inventory_balance.dart';
+import 'package:retail_offline/repositories/serial_selection_repository.dart';
 import 'package:retail_offline/repositories/session_data_repository.dart';
 import 'package:retail_offline/screens/home/home_controller.dart';
 import 'package:retail_offline/services/file/google_drive_file_service.dart';
@@ -23,10 +25,12 @@ LocalFileService _picker(List<({String name, Uint8List bytes})> queue) =>
 
 HomeController _controller(
   SessionDataRepository repo, {
+  SerialSelectionRepository? selections,
   List<({String name, Uint8List bytes})> picks = const [],
   MockClientHandler? drive,
 }) => HomeController(
   repository: repo,
+  selections: selections,
   localFiles: _picker([...picks]),
   googleDrive: GoogleDriveFileService(
     client: MockClient(drive ?? (_) async => http.Response('blocked', 403)),
@@ -284,6 +288,61 @@ void main() {
       expect(await c.loadData(), isTrue);
       expect(c.canLoad, isFalse);
     });
+
+    test(
+      'a failed re-import keeps selections; a successful one clears them',
+      () async {
+        final repo = InMemorySessionDataRepository();
+        final selections = InMemorySerialSelectionRepository();
+        const balance = InventoryBalance(
+          address: r'$$AGVI',
+          productId: bigProductId,
+          serialNumber: 'SN-0001',
+          quantity: 1,
+        );
+        final c = _controller(
+          repo,
+          selections: selections,
+          picks: [
+            (name: 'orders.xlsx', bytes: _goodOrders),
+            (name: 'inventory.xlsx', bytes: _goodInventory),
+            (name: 'orders2.xlsx', bytes: ordersXlsx([orderRow()])),
+            (
+              name: 'inventory2.xlsx',
+              bytes: inventoryXlsx([inventoryRow(quantity: 'oops')]),
+            ),
+            (name: 'orders3.xlsx', bytes: _goodOrders),
+            (name: 'inventory3.xlsx', bytes: _goodInventory),
+          ],
+        );
+
+        await c.pickLocalFile(ImportSlotId.orders);
+        await c.pickLocalFile(ImportSlotId.inventory);
+        expect(await c.loadData(), isTrue);
+        expect(
+          selections.addOne(
+            orderNumber: '900000001',
+            productId: bigProductId,
+            address: balance.address,
+            serialNumber: balance.serialNumber,
+            inventory: const [balance],
+            requiredQuantity: 1,
+          ),
+          isTrue,
+        );
+
+        await c.pickLocalFile(ImportSlotId.orders);
+        await c.pickLocalFile(ImportSlotId.inventory);
+        expect(await c.loadData(), isFalse);
+        expect(selections.selectedQuantity('900000001', bigProductId), 1);
+        expect(repo.orderCount, 3);
+
+        await c.pickLocalFile(ImportSlotId.orders);
+        await c.pickLocalFile(ImportSlotId.inventory);
+        expect(await c.loadData(), isTrue);
+        expect(selections.selectedQuantity('900000001', bigProductId), 0);
+      },
+    );
 
     test('loadData without two usable files does nothing', () async {
       final repo = InMemorySessionDataRepository();

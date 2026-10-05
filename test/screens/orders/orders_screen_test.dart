@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:retail_offline/core/theme/app_theme.dart';
 import 'package:retail_offline/models/order.dart';
 import 'package:retail_offline/models/store.dart';
+import 'package:retail_offline/repositories/serial_selection_repository.dart';
 import 'package:retail_offline/repositories/session_data_repository.dart';
 import 'package:retail_offline/screens/orders/order_details_screen.dart';
 import 'package:retail_offline/screens/orders/orders_screen.dart';
@@ -71,7 +72,11 @@ Future<void> _pumpOrders(
   await tester.pumpWidget(
     MaterialApp(
       theme: AppTheme.light,
-      home: OrdersScreen(store: _store, repository: repository),
+      home: OrdersScreen(
+        store: _store,
+        repository: repository,
+        selections: InMemorySerialSelectionRepository(),
+      ),
     ),
   );
 }

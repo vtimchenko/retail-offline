@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/store.dart';
+import '../../repositories/serial_selection_repository.dart';
 import '../../repositories/session_data_repository.dart';
 import '../../services/store_service.dart';
 import '../../widgets/centered_content.dart';
@@ -16,6 +17,7 @@ class StoreSelectionScreen extends StatefulWidget {
     super.key,
     this.storeService = const StoreService(),
     this.repository,
+    this.selections,
   });
 
   final StoreService storeService;
@@ -23,6 +25,10 @@ class StoreSelectionScreen extends StatefulWidget {
   /// Session data shared with the home screen. A new in-memory repository is
   /// created if none is provided.
   final SessionDataRepository? repository;
+
+  /// Serial reservations shared with the rest of the session. A new
+  /// in-memory repository is created if none is provided.
+  final SerialSelectionRepository? selections;
 
   @override
   State<StoreSelectionScreen> createState() => _StoreSelectionScreenState();
@@ -35,11 +41,13 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> {
   Store? _selectedStore;
 
   late final SessionDataRepository _repository;
+  late final SerialSelectionRepository _selections;
 
   @override
   void initState() {
     super.initState();
     _repository = widget.repository ?? InMemorySessionDataRepository();
+    _selections = widget.selections ?? InMemorySerialSelectionRepository();
     _storesFuture = widget.storeService.loadStores();
   }
 
@@ -55,7 +63,11 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> {
     if (store == null) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => HomeScreen(store: store, repository: _repository),
+        builder: (_) => HomeScreen(
+          store: store,
+          repository: _repository,
+          selections: _selections,
+        ),
       ),
     );
   }
@@ -155,12 +167,12 @@ class _SelectionCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Align(
-  child: Image.asset(
-    'assets/images/store_selection.png',
-    height: 120,
-    fit: BoxFit.contain,
-  ),
-),
+              child: Image.asset(
+                'assets/images/store_selection.png',
+                height: 120,
+                fit: BoxFit.contain,
+              ),
+            ),
             const SizedBox(height: 20),
             Text(
               AppStrings.storeSelectionTitle,

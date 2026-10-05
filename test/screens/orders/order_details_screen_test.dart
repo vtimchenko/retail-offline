@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retail_offline/core/theme/app_theme.dart';
+import 'package:retail_offline/models/inventory_balance.dart';
 import 'package:retail_offline/models/order.dart';
 import 'package:retail_offline/models/store.dart';
+import 'package:retail_offline/repositories/serial_selection_repository.dart';
+import 'package:retail_offline/repositories/session_data_repository.dart';
 import 'package:retail_offline/screens/orders/order_details_screen.dart';
 
 const _store = Store(nameStore: 'ТВ Тестовий Магазин 1', idStore: '42');
@@ -36,15 +39,25 @@ final _order = Order(
 Future<void> _pumpDetails(
   WidgetTester tester, {
   Size size = const Size(1000, 1400),
+  SerialSelectionRepository? selections,
+  Order? order,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  final shown = order ?? _order;
+  final repository = InMemorySessionDataRepository()
+    ..commit(orders: [shown], inventory: const []);
   await tester.pumpWidget(
     MaterialApp(
       theme: AppTheme.light,
-      home: OrderDetailsScreen(store: _store, order: _order),
+      home: OrderDetailsScreen(
+        store: _store,
+        order: shown,
+        repository: repository,
+        selections: selections ?? InMemorySerialSelectionRepository(),
+      ),
     ),
   );
 }
@@ -67,6 +80,9 @@ void main() {
     expect(find.text('19,99'), findsOneWidget);
     expect(find.text('1,50'), findsOneWidget);
     expect(find.text('4,50'), findsOneWidget);
+    expect(find.text('Обрано 0 з 2'), findsOneWidget);
+    expect(find.text('Обрано 0 з 4'), findsOneWidget);
+    expect(find.text('Завершити обслуговування'), findsOneWidget);
     expect(find.text('20,00'), findsNothing);
     expect(find.text('6,00'), findsNothing);
     expect(find.textContaining(_productId), findsNothing);
@@ -99,6 +115,73 @@ void main() {
     expect(second, greaterThan(first));
     expect(find.text('10,00'), findsOneWidget);
     expect(find.text('19,99'), findsOneWidget);
+    expect(find.text('Обрано 0 з 2'), findsOneWidget);
     expect(find.textContaining(_productId), findsNothing);
+  });
+
+  testWidgets('completion lists every unfinished product', (tester) async {
+    await _pumpDetails(tester, size: const Size(320, 700));
+
+    await tester.tap(find.byKey(const Key('complete-service')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('fulfilment-incomplete')), findsOneWidget);
+    expect(find.text('Товар 1 — потрібно 2, обрано 0'), findsOneWidget);
+    expect(find.text('Товар 2 — потрібно 4, обрано 0'), findsOneWidget);
+    expect(find.text('Серійні номери вказані коректно'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('fulfilment-ok')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('fulfilment-incomplete')), findsNothing);
+  });
+
+  testWidgets('completion confirms when every line is reserved', (
+    tester,
+  ) async {
+    const inventory = [
+      InventoryBalance(
+        address: 'A',
+        productId: _productId,
+        serialNumber: 'S1',
+        quantity: 2,
+      ),
+      InventoryBalance(
+        address: 'A',
+        productId: '80762',
+        serialNumber: 'S2',
+        quantity: 4,
+      ),
+    ];
+    final selections = InMemorySerialSelectionRepository();
+    for (var i = 0; i < 2; i++) {
+      selections.addOne(
+        orderNumber: _order.orderNumber,
+        productId: _productId,
+        address: 'A',
+        serialNumber: 'S1',
+        inventory: inventory,
+        requiredQuantity: 2,
+      );
+    }
+    for (var i = 0; i < 4; i++) {
+      selections.addOne(
+        orderNumber: _order.orderNumber,
+        productId: '80762',
+        address: 'A',
+        serialNumber: 'S2',
+        inventory: inventory,
+        requiredQuantity: 4,
+      );
+    }
+
+    await _pumpDetails(tester, selections: selections);
+
+    expect(find.text('Обрано 2 з 2'), findsOneWidget);
+    expect(find.text('Обрано 4 з 4'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('complete-service')));
+    await tester.pumpAndSettle();
+    expect(find.text('Серійні номери вказані коректно'), findsOneWidget);
+    expect(find.byKey(const Key('fulfilment-incomplete')), findsNothing);
   });
 }

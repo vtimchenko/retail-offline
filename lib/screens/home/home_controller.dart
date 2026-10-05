@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/constants/import_messages.dart';
 import '../../core/errors/import_exception.dart';
 import '../../models/imported_file.dart';
+import '../../repositories/serial_selection_repository.dart';
 import '../../repositories/session_data_repository.dart';
 import '../../services/excel/excel_import_service.dart';
 import '../../services/excel/inventory_parser_service.dart';
@@ -87,16 +88,21 @@ class ImportSummary {
 class HomeController extends ChangeNotifier {
   HomeController({
     required this.repository,
+    SerialSelectionRepository? selections,
     LocalFileService? localFiles,
     GoogleDriveFileService? googleDrive,
     this.excel = const ExcelImportService(),
     this.ordersParser = const OrdersParserService(),
     this.inventoryParser = const InventoryParserService(),
-  }) : localFiles = localFiles ?? const LocalFileService(),
+  }) : selections = selections ?? InMemorySerialSelectionRepository(),
+       localFiles = localFiles ?? const LocalFileService(),
        googleDrive = googleDrive ?? GoogleDriveFileService(),
        _summary = repository.hasData ? ImportSummary.of(repository) : null;
 
   final SessionDataRepository repository;
+
+  /// Reservations for this session. Cleared after a successful import.
+  final SerialSelectionRepository selections;
   final LocalFileService localFiles;
   final GoogleDriveFileService googleDrive;
   final ExcelImportService excel;
@@ -178,7 +184,9 @@ class HomeController extends ChangeNotifier {
   // ---- Import -----------------------------------------------------------
 
   /// Parses and validates both files completely, and only then updates the
-  /// repository. If anything fails, the repository stays exactly as it was.
+  /// repository. If anything fails, the repository stays exactly as it was
+  /// and [selections] are left untouched. A successful commit clears
+  /// [selections], because the imported snapshot they referred to is gone.
   ///
   /// Returns `true` only when this call committed new data.
   Future<bool> loadData() async {
@@ -207,6 +215,7 @@ class HomeController extends ChangeNotifier {
 
       // Both datasets are complete and valid: only now touch the repository.
       repository.commit(orders: parsedOrders, inventory: parsedInventory);
+      selections.clear();
       _summary = ImportSummary.of(repository);
       _orders = _orders.copyWith(isBusy: false, isLoaded: true);
       _inventory = _inventory.copyWith(isBusy: false, isLoaded: true);

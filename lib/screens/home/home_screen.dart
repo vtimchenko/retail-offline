@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/store.dart';
+import '../../repositories/serial_selection_repository.dart';
 import '../../repositories/session_data_repository.dart';
 import '../../widgets/centered_content.dart';
 import '../orders/orders_screen.dart';
@@ -19,6 +20,7 @@ class HomeScreen extends StatefulWidget {
     super.key,
     required this.store,
     this.repository,
+    this.selections,
     this.controller,
   });
 
@@ -28,6 +30,12 @@ class HomeScreen extends StatefulWidget {
 
   /// Where imported data goes. Defaults to a new in-memory repository.
   final SessionDataRepository? repository;
+
+  /// Passed into the [HomeController] created by this screen.
+  ///
+  /// Ignored when [controller] is set, because that controller already owns
+  /// its selections.
+  final SerialSelectionRepository? selections;
 
   /// Overrides the whole import controller (used by tests).
   final HomeController? controller;
@@ -48,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
         widget.controller ??
         HomeController(
           repository: widget.repository ?? InMemorySessionDataRepository(),
+          selections: widget.selections,
         );
   }
 
@@ -75,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => OrdersScreen(
           store: widget.store,
           repository: _controller.repository,
+          selections: _controller.selections,
         ),
       ),
     );

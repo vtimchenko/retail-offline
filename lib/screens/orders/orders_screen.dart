@@ -5,6 +5,7 @@ import '../../core/format/display_format.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/order.dart';
 import '../../models/store.dart';
+import '../../repositories/serial_selection_repository.dart';
 import '../../repositories/session_data_repository.dart';
 import '../../widgets/status_message.dart';
 import 'order_details_screen.dart';
@@ -16,10 +17,12 @@ class OrdersScreen extends StatefulWidget {
     super.key,
     required this.store,
     required this.repository,
+    required this.selections,
   });
 
   final Store store;
   final SessionDataRepository repository;
+  final SerialSelectionRepository selections;
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -41,7 +44,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
   void _openDetails(Order order) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => OrderDetailsScreen(store: widget.store, order: order),
+        builder: (_) => OrderDetailsScreen(
+          store: widget.store,
+          order: order,
+          repository: widget.repository,
+          selections: widget.selections,
+        ),
       ),
     );
   }

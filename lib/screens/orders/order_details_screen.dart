@@ -1,12 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/format/display_format.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/order.dart';
+import '../../models/order_export.dart';
 import '../../models/store.dart';
+import '../../repositories/order_export_repository.dart';
 import '../../repositories/serial_selection_repository.dart';
 import '../../repositories/session_data_repository.dart';
+import '../../services/excel/order_export_workbook.dart';
+import '../../services/file/xlsx_share.dart';
 import 'fulfilment_check.dart';
 import 'serial_selection_screen.dart';
 
@@ -20,12 +26,18 @@ class OrderDetailsScreen extends StatefulWidget {
     required this.order,
     required this.repository,
     required this.selections,
+    required this.exports,
+    this.shareXlsx,
   });
 
   final Store store;
   final Order order;
   final SessionDataRepository repository;
   final SerialSelectionRepository selections;
+  final OrderExportRepository exports;
+
+  /// Replaces [shareOrDownloadXlsx] in tests.
+  final ShareXlsx? shareXlsx;
 
   @override
   State<OrderDetailsScreen> createState() => _OrderDetailsScreenState();
@@ -52,35 +64,101 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
   void _complete() {
     final result = FulfilmentCheck.check(widget.order, widget.selections);
+    if (!result.isComplete) {
+      _showIncomplete(result);
+      return;
+    }
+
+    final OrderExport export;
+    try {
+      export = OrderExportWorkbook.build(
+        idStore: widget.store.idStore,
+        order: widget.order,
+        selections: widget.selections,
+      );
+    } on Object catch (error, stack) {
+      debugPrint('Excel export failed: $error\n$stack');
+      _showNotice(
+        AppStrings.excelGenerationFailed,
+        key: const Key('export-failed'),
+      );
+      return;
+    }
+
+    widget.exports.put(export);
+    setState(() {});
+    _showNotice(
+      AppStrings.excelFileCreated,
+      key: const Key('fulfilment-success'),
+    );
+  }
+
+  void _share() {
+    final export = widget.exports.exportFor(widget.order.orderNumber);
+    if (export == null) return;
+    final pending = (widget.shareXlsx ?? shareOrDownloadXlsx)(
+      filename: export.filename,
+      bytes: export.bytes,
+    );
+    unawaited(
+      pending.then<void>(
+        (_) {},
+        onError: (Object error, StackTrace stack) {
+          debugPrint('Share failed: $error\n$stack');
+          if (!mounted) return;
+          _showNotice(
+            AppStrings.excelShareFailed,
+            key: const Key('share-failed'),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showNotice(String message, {required Key key}) {
     showDialog<void>(
       context: context,
-      builder: (dialogContext) {
-        if (result.isComplete) {
-          return AlertDialog(
-            key: const Key('fulfilment-success'),
-            content: const Text(AppStrings.serialsCorrect),
-            actions: [
-              TextButton(
-                key: const Key('fulfilment-ok'),
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text(AppStrings.dialogOk),
-              ),
-            ],
-          );
-        }
-        return AlertDialog(
-          key: const Key('fulfilment-incomplete'),
-          title: const Text(AppStrings.fulfilmentIncompleteTitle),
-          content: _IncompleteFulfilment(gaps: result.gaps),
-          actions: [
-            TextButton(
-              key: const Key('fulfilment-ok'),
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text(AppStrings.dialogOk),
-            ),
-          ],
-        );
-      },
+      builder: (dialogContext) => AlertDialog(
+        key: key,
+        content: Text(message),
+        actions: [
+          TextButton(
+            key: const Key('fulfilment-ok'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text(AppStrings.dialogOk),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _serviceButton() {
+    final ready = widget.exports.exportFor(widget.order.orderNumber) != null;
+    return FilledButton(
+      key: Key(ready ? 'share-file' : 'complete-service'),
+      onPressed: ready ? _share : _complete,
+      child: Text(
+        ready ? AppStrings.shareFile : AppStrings.completeService,
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  void _showIncomplete(FulfilmentResult result) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('fulfilment-incomplete'),
+        title: const Text(AppStrings.fulfilmentIncompleteTitle),
+        content: _IncompleteFulfilment(gaps: result.gaps),
+        actions: [
+          TextButton(
+            key: const Key('fulfilment-ok'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text(AppStrings.dialogOk),
+          ),
+        ],
+      ),
     );
   }
 
@@ -149,14 +227,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: FilledButton(
-                        key: const Key('complete-service'),
-                        onPressed: _complete,
-                        child: const Text(
-                          AppStrings.completeService,
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
+                      child: _serviceButton(),
                     ),
                   ],
                 ),

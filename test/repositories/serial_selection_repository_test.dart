@@ -338,4 +338,53 @@ void main() {
       isEmpty,
     );
   });
+
+  test('notifies only after a reservation actually changes', () {
+    final orders = <String>[];
+    repo.setOrderChangedListener(orders.add);
+    final inventory = [_balance(quantity: 1)];
+
+    expect(add(inventory: inventory, requiredQuantity: 1), isTrue);
+    expect(orders, ['907907']);
+
+    expect(add(inventory: inventory, requiredQuantity: 1), isFalse);
+    expect(
+      repo.removeOne(
+        orderNumber: '907907',
+        productId: _product,
+        address: 'A1',
+        serialNumber: 'missing',
+      ),
+      isFalse,
+    );
+    expect(orders, ['907907']);
+
+    expect(
+      add(
+        inventory: [
+          _balance(address: 'B2', serialNumber: 'SN002', quantity: 1),
+        ],
+        orderNumber: 'other',
+        address: 'B2',
+        serialNumber: 'SN002',
+        requiredQuantity: 1,
+      ),
+      isTrue,
+    );
+    expect(orders, ['907907', 'other']);
+
+    expect(
+      repo.removeOne(
+        orderNumber: '907907',
+        productId: _product,
+        address: 'A1',
+        serialNumber: 'SN001',
+      ),
+      isTrue,
+    );
+    expect(orders, ['907907', 'other', '907907']);
+
+    repo.clear();
+    expect(orders, ['907907', 'other', '907907']);
+  });
 }

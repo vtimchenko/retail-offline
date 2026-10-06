@@ -1,12 +1,16 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retail_offline/core/theme/app_theme.dart';
 import 'package:retail_offline/models/inventory_balance.dart';
 import 'package:retail_offline/models/order.dart';
 import 'package:retail_offline/models/store.dart';
+import 'package:retail_offline/repositories/order_export_repository.dart';
 import 'package:retail_offline/repositories/serial_selection_repository.dart';
 import 'package:retail_offline/repositories/session_data_repository.dart';
 import 'package:retail_offline/screens/orders/order_details_screen.dart';
+import 'package:retail_offline/services/file/xlsx_share.dart';
 
 const _store = Store(nameStore: 'ТВ Тестовий Магазин 1', idStore: '42');
 const _productId = '1290564103789190763';
@@ -40,6 +44,8 @@ Future<void> _pumpDetails(
   WidgetTester tester, {
   Size size = const Size(1000, 1400),
   SerialSelectionRepository? selections,
+  OrderExportRepository? exports,
+  ShareXlsx? shareXlsx,
   Order? order,
 }) async {
   tester.view.physicalSize = size;
@@ -57,6 +63,8 @@ Future<void> _pumpDetails(
         order: shown,
         repository: repository,
         selections: selections ?? InMemorySerialSelectionRepository(),
+        exports: exports ?? InMemoryOrderExportRepository(),
+        shareXlsx: shareXlsx,
       ),
     ),
   );
@@ -129,7 +137,7 @@ void main() {
     expect(find.byKey(const Key('fulfilment-incomplete')), findsOneWidget);
     expect(find.text('Товар 1 — потрібно 2, обрано 0'), findsOneWidget);
     expect(find.text('Товар 2 — потрібно 4, обрано 0'), findsOneWidget);
-    expect(find.text('Серійні номери вказані коректно'), findsNothing);
+    expect(find.text('Файл Excel успішно сформовано'), findsNothing);
 
     await tester.tap(find.byKey(const Key('fulfilment-ok')));
     await tester.pumpAndSettle();
@@ -175,13 +183,181 @@ void main() {
       );
     }
 
-    await _pumpDetails(tester, selections: selections);
+    final exports = InMemoryOrderExportRepository();
+    String? sharedName;
+    Uint8List? sharedBytes;
+    await _pumpDetails(
+      tester,
+      selections: selections,
+      exports: exports,
+      shareXlsx: ({required filename, required bytes}) async {
+        sharedName = filename;
+        sharedBytes = bytes;
+        return XlsxShareResult.shared;
+      },
+    );
 
     expect(find.text('Обрано 2 з 2'), findsOneWidget);
     expect(find.text('Обрано 4 з 4'), findsOneWidget);
     await tester.tap(find.byKey(const Key('complete-service')));
     await tester.pumpAndSettle();
-    expect(find.text('Серійні номери вказані коректно'), findsOneWidget);
+    expect(find.text('Файл Excel успішно сформовано'), findsOneWidget);
+    expect(find.text('Поширити файл'), findsOneWidget);
     expect(find.byKey(const Key('fulfilment-incomplete')), findsNothing);
+    expect(exports.exportFor(_order.orderNumber)?.filename, sharedFileName);
+    expect(exports.exportFor(_order.orderNumber)!.bytes, isNotEmpty);
+
+    await tester.tap(find.byKey(const Key('fulfilment-ok')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('share-file')));
+    await tester.pump();
+    expect(sharedName, sharedFileName);
+    expect(sharedBytes, exports.exportFor(_order.orderNumber)!.bytes);
   });
+
+  testWidgets('keeps Поширити файл when the same order is opened again', (
+    tester,
+  ) async {
+    final selections = _completeSelections();
+    final exports = InMemoryOrderExportRepository();
+    await _pumpDetails(tester, selections: selections, exports: exports);
+    await tester.tap(find.byKey(const Key('complete-service')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('fulfilment-ok')));
+    await tester.pumpAndSettle();
+
+    await _pumpDetails(tester, selections: selections, exports: exports);
+    expect(find.text('Поширити файл'), findsOneWidget);
+    expect(find.text('Завершити обслуговування'), findsNothing);
+  });
+
+  testWidgets('a later serial change brings back completion', (tester) async {
+    final selections = _completeSelections();
+    final exports = InMemoryOrderExportRepository();
+    selections.setOrderChangedListener(exports.invalidate);
+    await _pumpDetails(tester, selections: selections, exports: exports);
+
+    await tester.tap(find.byKey(const Key('complete-service')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('fulfilment-ok')));
+    await tester.pumpAndSettle();
+    expect(find.text('Поширити файл'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('order-item-row-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey(('selected', 'A', 'S1'))));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('remove-serial')));
+    await tester.pump();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Завершити обслуговування'), findsOneWidget);
+    expect(find.text('Поширити файл'), findsNothing);
+    expect(exports.exportFor(_order.orderNumber), isNull);
+  });
+
+  testWidgets('a failed export keeps the completion button', (tester) async {
+    final order = Order(
+      invoiceDate: _order.invoiceDate,
+      invoiceNumber: _order.invoiceNumber,
+      orderNumber: '9\u0001',
+      customer: _order.customer,
+      customerPhone: _order.customerPhone,
+      items: _order.items,
+    );
+    final selections = InMemorySerialSelectionRepository();
+    const inventory = [
+      InventoryBalance(
+        address: 'A',
+        productId: _productId,
+        serialNumber: 'S1',
+        quantity: 2,
+      ),
+      InventoryBalance(
+        address: 'A',
+        productId: '80762',
+        serialNumber: 'S2',
+        quantity: 4,
+      ),
+    ];
+    for (var i = 0; i < 2; i++) {
+      selections.addOne(
+        orderNumber: order.orderNumber,
+        productId: _productId,
+        address: 'A',
+        serialNumber: 'S1',
+        inventory: inventory,
+        requiredQuantity: 2,
+      );
+    }
+    for (var i = 0; i < 4; i++) {
+      selections.addOne(
+        orderNumber: order.orderNumber,
+        productId: '80762',
+        address: 'A',
+        serialNumber: 'S2',
+        inventory: inventory,
+        requiredQuantity: 4,
+      );
+    }
+    final exports = InMemoryOrderExportRepository();
+    await _pumpDetails(
+      tester,
+      selections: selections,
+      exports: exports,
+      order: order,
+    );
+
+    await tester.tap(find.byKey(const Key('complete-service')));
+    await tester.pumpAndSettle();
+    expect(find.text('Не вдалося сформувати файл Excel'), findsOneWidget);
+    expect(exports.exportFor(order.orderNumber), isNull);
+
+    await tester.tap(find.byKey(const Key('fulfilment-ok')));
+    await tester.pumpAndSettle();
+    expect(find.text('Завершити обслуговування'), findsOneWidget);
+    expect(find.text('Поширити файл'), findsNothing);
+  });
+}
+
+const sharedFileName = '42_ТЕСТ000002_900000002.xlsx';
+
+InMemorySerialSelectionRepository _completeSelections() {
+  const inventory = [
+    InventoryBalance(
+      address: 'A',
+      productId: _productId,
+      serialNumber: 'S1',
+      quantity: 2,
+    ),
+    InventoryBalance(
+      address: 'A',
+      productId: '80762',
+      serialNumber: 'S2',
+      quantity: 4,
+    ),
+  ];
+  final selections = InMemorySerialSelectionRepository();
+  for (var i = 0; i < 2; i++) {
+    selections.addOne(
+      orderNumber: _order.orderNumber,
+      productId: _productId,
+      address: 'A',
+      serialNumber: 'S1',
+      inventory: inventory,
+      requiredQuantity: 2,
+    );
+  }
+  for (var i = 0; i < 4; i++) {
+    selections.addOne(
+      orderNumber: _order.orderNumber,
+      productId: '80762',
+      address: 'A',
+      serialNumber: 'S2',
+      inventory: inventory,
+      requiredQuantity: 4,
+    );
+  }
+  return selections;
 }

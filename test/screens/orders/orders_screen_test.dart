@@ -1,8 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:retail_offline/core/theme/app_colors.dart';
 import 'package:retail_offline/core/theme/app_theme.dart';
+import 'package:retail_offline/models/inventory_balance.dart';
 import 'package:retail_offline/models/order.dart';
+import 'package:retail_offline/models/order_export.dart';
 import 'package:retail_offline/models/store.dart';
+import 'package:retail_offline/repositories/order_export_repository.dart';
 import 'package:retail_offline/repositories/serial_selection_repository.dart';
 import 'package:retail_offline/repositories/session_data_repository.dart';
 import 'package:retail_offline/screens/orders/order_details_screen.dart';
@@ -63,6 +69,8 @@ SessionDataRepository _repository(List<Order> orders) {
 Future<void> _pumpOrders(
   WidgetTester tester,
   SessionDataRepository repository, {
+  SerialSelectionRepository? selections,
+  OrderExportRepository? exports,
   Size size = const Size(1000, 1400),
 }) async {
   tester.view.physicalSize = size;
@@ -75,7 +83,8 @@ Future<void> _pumpOrders(
       home: OrdersScreen(
         store: _store,
         repository: repository,
-        selections: InMemorySerialSelectionRepository(),
+        selections: selections ?? InMemorySerialSelectionRepository(),
+        exports: exports ?? InMemoryOrderExportRepository(),
       ),
     ),
   );
@@ -214,4 +223,210 @@ void main() {
     expect(second, greaterThan(first + 40));
     expect(find.text(_formattedPhone), findsOneWidget);
   });
+
+  testWidgets('wide rows show derived status colors and labels', (
+    tester,
+  ) async {
+    final fixture = _statusFixture();
+    await _pumpOrders(
+      tester,
+      fixture.repository,
+      selections: fixture.selections,
+      exports: fixture.exports,
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Статус'), findsOneWidget);
+    expect(find.text('Без вибору'), findsOneWidget);
+    expect(find.text('В процесі'), findsOneWidget);
+    expect(find.text('Готово'), findsOneWidget);
+    expect(find.text('Файл сформовано'), findsOneWidget);
+    expect(find.byIcon(Icons.radio_button_unchecked), findsOneWidget);
+    expect(find.byIcon(Icons.timelapse), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+    expect(find.byIcon(Icons.description_outlined), findsOneWidget);
+    expect(_rowColor(tester, 'none'), AppColors.background);
+    expect(
+      _rowColor(tester, 'progress'),
+      AppColors.orderStatusInProgressBackground,
+    );
+    expect(_rowColor(tester, 'ready'), AppColors.orderStatusReadyBackground);
+    expect(_rowColor(tester, 'file'), AppColors.orderStatusFileReadyBackground);
+  });
+
+  testWidgets('narrow cards show the same derived statuses', (tester) async {
+    final fixture = _statusFixture();
+    await _pumpOrders(
+      tester,
+      fixture.repository,
+      selections: fixture.selections,
+      exports: fixture.exports,
+      size: const Size(360, 1400),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('orders-table-header')), findsNothing);
+    expect(find.text('Статус'), findsNothing);
+    expect(find.text('Без вибору'), findsOneWidget);
+    expect(find.text('В процесі'), findsOneWidget);
+    expect(find.text('Готово'), findsOneWidget);
+    expect(find.text('Файл сформовано'), findsOneWidget);
+    expect(_cardColor(tester, 'none'), isNull);
+    expect(
+      _cardColor(tester, 'progress'),
+      AppColors.orderStatusInProgressBackground,
+    );
+    expect(_cardColor(tester, 'ready'), AppColors.orderStatusReadyBackground);
+    expect(
+      _cardColor(tester, 'file'),
+      AppColors.orderStatusFileReadyBackground,
+    );
+  });
+
+  testWidgets('refreshes status after returning from order details', (
+    tester,
+  ) async {
+    final selections = InMemorySerialSelectionRepository();
+    const inventory = [
+      InventoryBalance(
+        address: 'A',
+        productId: _productId,
+        serialNumber: 'S1',
+        quantity: 2,
+      ),
+    ];
+    for (var i = 0; i < 2; i++) {
+      selections.addOne(
+        orderNumber: '900000001',
+        productId: _productId,
+        address: 'A',
+        serialNumber: 'S1',
+        inventory: inventory,
+        requiredQuantity: 2,
+      );
+    }
+    final exports = InMemoryOrderExportRepository();
+    await _pumpOrders(
+      tester,
+      _repository(_orders),
+      selections: selections,
+      exports: exports,
+    );
+
+    expect(find.text('Готово'), findsOneWidget);
+    expect(find.text('Без вибору'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('900000001')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('complete-service')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('fulfilment-ok')));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Файл сформовано'), findsOneWidget);
+    expect(find.text('Готово'), findsNothing);
+    expect(find.text('Без вибору'), findsOneWidget);
+    expect(
+      _rowColor(tester, '900000001'),
+      AppColors.orderStatusFileReadyBackground,
+    );
+  });
+}
+
+typedef _StatusFixture = ({
+  SessionDataRepository repository,
+  SerialSelectionRepository selections,
+  OrderExportRepository exports,
+});
+
+_StatusFixture _statusFixture() {
+  Order order(String number, String productId) => Order(
+    invoiceDate: DateTime(2026, 10, 3, 11, 46, 18),
+    invoiceNumber: number,
+    orderNumber: number,
+    customer: 'Клієнт $number',
+    customerPhone: '0501112233',
+    items: [
+      OrderItem(
+        product: 'Товар $number',
+        productId: productId,
+        quantity: 2,
+        priceMinorUnits: 100,
+        amountMinorUnits: 200,
+      ),
+    ],
+  );
+
+  const noneId = '100';
+  const progressId = '200';
+  const readyId = '300';
+  const fileId = '400';
+  final orders = [
+    order('none', noneId),
+    order('progress', progressId),
+    order('ready', readyId),
+    order('file', fileId),
+  ];
+  final selections = InMemorySerialSelectionRepository();
+  void reserve(String number, String productId, int count) {
+    final inventory = [
+      InventoryBalance(
+        address: 'A',
+        productId: productId,
+        serialNumber: 'S',
+        quantity: 2,
+      ),
+    ];
+    for (var i = 0; i < count; i++) {
+      selections.addOne(
+        orderNumber: number,
+        productId: productId,
+        address: 'A',
+        serialNumber: 'S',
+        inventory: inventory,
+        requiredQuantity: 2,
+      );
+    }
+  }
+
+  reserve('progress', progressId, 1);
+  reserve('ready', readyId, 2);
+  reserve('file', fileId, 2);
+  final exports = InMemoryOrderExportRepository()
+    ..put(
+      OrderExport(
+        orderNumber: 'file',
+        filename: 'file.xlsx',
+        bytes: Uint8List.fromList(const [1]),
+      ),
+    );
+  return (
+    repository: _repository(orders),
+    selections: selections,
+    exports: exports,
+  );
+}
+
+Color? _rowColor(WidgetTester tester, String orderNumber) {
+  return tester
+      .widget<Material>(
+        find.descendant(
+          of: find.byKey(ValueKey(orderNumber)),
+          matching: find.byType(Material),
+        ),
+      )
+      .color;
+}
+
+Color? _cardColor(WidgetTester tester, String orderNumber) {
+  return tester
+      .widget<Card>(
+        find.descendant(
+          of: find.byKey(ValueKey(orderNumber)),
+          matching: find.byType(Card),
+        ),
+      )
+      .color;
 }

@@ -94,7 +94,16 @@ abstract final class AppStrings {
 
   // ---- Serial selection ----
   static const String completeService = 'Завершити обслуговування';
-  static const String serialsCorrect = 'Серійні номери вказані коректно';
+  static const String shareFile = 'Поширити файл';
+  static const String excelFileCreated = 'Файл Excel успішно сформовано';
+  static const String excelGenerationFailed =
+      'Не вдалося сформувати файл Excel';
+  static const String excelShareFailed = 'Не вдалося поширити файл';
+  static const String orderStatusLabel = 'Статус';
+  static const String orderStatusNone = 'Без вибору';
+  static const String orderStatusInProgress = 'В процесі';
+  static const String orderStatusReady = 'Готово';
+  static const String orderStatusFileReady = 'Файл сформовано';
   static const String fulfilmentIncompleteTitle = 'Обслуговування не завершено';
   static const String fulfilmentIncompleteIntro =
       'Не для всіх товарів обрано потрібну кількість серійних номерів:';

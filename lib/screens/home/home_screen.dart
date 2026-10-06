@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/store.dart';
+import '../../repositories/order_export_repository.dart';
 import '../../repositories/serial_selection_repository.dart';
 import '../../repositories/session_data_repository.dart';
 import '../../widgets/centered_content.dart';
@@ -21,11 +22,12 @@ class HomeScreen extends StatefulWidget {
     required this.store,
     this.repository,
     this.selections,
+    this.exports,
     this.controller,
   });
 
-  /// Store chosen on the previous screen; `store.idStore` is used by
-  /// future features.
+  /// Store chosen on the previous screen. [Store.idStore] is written into
+  /// the fulfilment workbook.
   final Store store;
 
   /// Where imported data goes. Defaults to a new in-memory repository.
@@ -36,6 +38,12 @@ class HomeScreen extends StatefulWidget {
   /// Ignored when [controller] is set, because that controller already owns
   /// its selections.
   final SerialSelectionRepository? selections;
+
+  /// Passed into the [HomeController] created by this screen.
+  ///
+  /// Ignored when [controller] is set, because that controller already owns
+  /// its exports.
+  final OrderExportRepository? exports;
 
   /// Overrides the whole import controller (used by tests).
   final HomeController? controller;
@@ -57,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
         HomeController(
           repository: widget.repository ?? InMemorySessionDataRepository(),
           selections: widget.selections,
+          exports: widget.exports,
         );
   }
 
@@ -85,6 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
           store: widget.store,
           repository: _controller.repository,
           selections: _controller.selections,
+          exports: _controller.exports,
         ),
       ),
     );

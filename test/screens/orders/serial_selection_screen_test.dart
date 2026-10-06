@@ -4,6 +4,7 @@ import 'package:retail_offline/core/theme/app_theme.dart';
 import 'package:retail_offline/models/inventory_balance.dart';
 import 'package:retail_offline/models/order.dart';
 import 'package:retail_offline/models/store.dart';
+import 'package:retail_offline/repositories/order_export_repository.dart';
 import 'package:retail_offline/repositories/serial_selection_repository.dart';
 import 'package:retail_offline/repositories/session_data_repository.dart';
 import 'package:retail_offline/screens/orders/order_details_screen.dart';
@@ -407,6 +408,7 @@ void main() {
           order: _order(),
           repository: repository,
           selections: selections,
+          exports: InMemoryOrderExportRepository(),
         ),
       ),
     );

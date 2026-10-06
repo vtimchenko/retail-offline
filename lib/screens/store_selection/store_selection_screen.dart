@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/store.dart';
+import '../../repositories/order_export_repository.dart';
 import '../../repositories/serial_selection_repository.dart';
 import '../../repositories/session_data_repository.dart';
 import '../../services/store_service.dart';
@@ -18,6 +19,7 @@ class StoreSelectionScreen extends StatefulWidget {
     this.storeService = const StoreService(),
     this.repository,
     this.selections,
+    this.exports,
   });
 
   final StoreService storeService;
@@ -29,6 +31,10 @@ class StoreSelectionScreen extends StatefulWidget {
   /// Serial reservations shared with the rest of the session. A new
   /// in-memory repository is created if none is provided.
   final SerialSelectionRepository? selections;
+
+  /// Fulfilment workbooks shared with the rest of the session. A new
+  /// in-memory repository is created if none is provided.
+  final OrderExportRepository? exports;
 
   @override
   State<StoreSelectionScreen> createState() => _StoreSelectionScreenState();
@@ -42,13 +48,22 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> {
 
   late final SessionDataRepository _repository;
   late final SerialSelectionRepository _selections;
+  late final OrderExportRepository _exports;
 
   @override
   void initState() {
     super.initState();
     _repository = widget.repository ?? InMemorySessionDataRepository();
     _selections = widget.selections ?? InMemorySerialSelectionRepository();
+    _exports = widget.exports ?? InMemoryOrderExportRepository();
+    _selections.setOrderChangedListener(_exports.invalidate);
     _storesFuture = widget.storeService.loadStores();
+  }
+
+  @override
+  void dispose() {
+    _selections.setOrderChangedListener(null);
+    super.dispose();
   }
 
   void _reload() {
@@ -67,6 +82,7 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> {
           store: store,
           repository: _repository,
           selections: _selections,
+          exports: _exports,
         ),
       ),
     );

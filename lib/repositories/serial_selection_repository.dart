@@ -6,6 +6,13 @@ import '../models/serial_selection.dart';
 /// Nothing is written to disk. A successful data import clears these
 /// reservations because the imported inventory snapshot has been replaced.
 abstract interface class SerialSelectionRepository {
+  /// Replaces the listener notified with the order number after [addOne] or
+  /// [removeOne] actually changes a reservation.
+  ///
+  /// Pass `null` to detach. A call that returns `false`, and [clear], do
+  /// not notify.
+  void setOrderChangedListener(void Function(String orderNumber)? listener);
+
   /// Sum of selected quantities for this order line, across every slot.
   int selectedQuantity(String orderNumber, String productId);
 
@@ -62,6 +69,12 @@ abstract interface class SerialSelectionRepository {
 /// runs after a successful import.
 class InMemorySerialSelectionRepository implements SerialSelectionRepository {
   final Map<SelectionOwner, Map<InventorySlot, int>> _byOwner = {};
+  void Function(String orderNumber)? _onOrderChanged;
+
+  @override
+  void setOrderChangedListener(void Function(String orderNumber)? listener) {
+    _onOrderChanged = listener;
+  }
 
   @override
   int selectedQuantity(String orderNumber, String productId) {
@@ -143,6 +156,7 @@ class InMemorySerialSelectionRepository implements SerialSelectionRepository {
       () => {},
     );
     slots[slot] = (slots[slot] ?? 0) + 1;
+    _onOrderChanged?.call(orderNumber);
     return true;
   }
 
@@ -165,6 +179,7 @@ class InMemorySerialSelectionRepository implements SerialSelectionRepository {
     } else {
       slots[slot] = current - 1;
     }
+    _onOrderChanged?.call(orderNumber);
     return true;
   }
 

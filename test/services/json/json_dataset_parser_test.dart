@@ -959,19 +959,122 @@ void main() {
       expect(dataset.stocks.single.productId.literal, '777');
       expect(dataset.orders.single.goods.single.productId.literal, '555');
     });
+  });
 
-    test('preserves duplicate stock rows', () {
-      final row = _stock(
-        address: 'A-01',
-        productId: bigProductId,
-        serialNumber: 'SN-0001',
-        quantity: '2',
+  group('stock identity', () {
+    test('rejects an exact duplicate composite key', () {
+      final error = _invalid(
+        _dataset(
+          stocksArray: '[${_stock(quantity: '2')},${_stock(quantity: '5')}]',
+        ),
       );
-      final dataset = _parse(_dataset(stocksArray: '[$row,$row]'));
-      expect(dataset.stocks, hasLength(2));
-      expect(dataset.stocks[0], dataset.stocks[1]);
-      expect(dataset.stocks[0].productId.literal, bigProductId);
-      expect(dataset.stocks[0].quantity, 2);
+      expect(error.message, contains('повторюється залишок'));
+      expect(error.message, contains('«ProductID» $bigProductId'));
+      expect(error.message, contains('«Address» «A-01»'));
+      expect(error.message, contains('«SerialNumber» «SN-0001»'));
+      expect(error.message, contains('(позиції 1 і 2)'));
+    });
+
+    test('reports the first row and a later repeat', () {
+      final error = _invalid(
+        _dataset(
+          stocksArray:
+              '[${_stock()},${_stock(address: 'B-02')},${_stock(quantity: '4')}]',
+        ),
+      );
+      expect(error.message, contains('(позиції 1 і 3)'));
+      expect(error.message, contains('«Address» «A-01»'));
+    });
+
+    test('accepts the same product and serial at another address', () {
+      final dataset = _parse(
+        _dataset(
+          stocksArray:
+              '[${_stock(address: 'A-01')},${_stock(address: 'B-02')}]',
+        ),
+      );
+      expect(dataset.stocks.map((stock) => stock.address), ['A-01', 'B-02']);
+    });
+
+    test('accepts the same address and serial for another product', () {
+      final dataset = _parse(
+        _dataset(
+          stocksArray:
+              '[${_stock(productId: bigProductId)},${_stock(productId: bigProductId2)}]',
+        ),
+      );
+      expect(dataset.stocks.map((stock) => stock.productId.literal), [
+        bigProductId,
+        bigProductId2,
+      ]);
+    });
+
+    test('accepts the same product and address with another serial', () {
+      final dataset = _parse(
+        _dataset(
+          stocksArray:
+              '[${_stock(serialNumber: 'SN-0001')},${_stock(serialNumber: 'SN-0002')}]',
+        ),
+      );
+      expect(dataset.stocks.map((stock) => stock.serialNumber), [
+        'SN-0001',
+        'SN-0002',
+      ]);
+    });
+
+    test('treats serial numbers as case-sensitive', () {
+      final dataset = _parse(
+        _dataset(
+          stocksArray:
+              '[${_stock(serialNumber: 'ABC123')},${_stock(serialNumber: 'abc123')}]',
+        ),
+      );
+      expect(dataset.stocks.map((stock) => stock.serialNumber), [
+        'ABC123',
+        'abc123',
+      ]);
+    });
+
+    test('detects a duplicate after address and serial trimming', () {
+      final error = _invalid(
+        _dataset(
+          stocksArray:
+              '[${_stock(address: '  A-01  ', serialNumber: '  SN-0001  ')},${_stock()}]',
+        ),
+      );
+      expect(error.message, contains('«Address» «A-01»'));
+      expect(error.message, contains('«SerialNumber» «SN-0001»'));
+      expect(error.message, isNot(contains('«  A-01')));
+      expect(error.message, isNot(contains('«  SN-0001')));
+      expect(error.message, contains('(позиції 1 і 2)'));
+    });
+
+    test('keeps the exact digits of a large duplicate ProductID', () {
+      final error = _invalid(
+        _dataset(
+          stocksArray:
+              '[${_stock(productId: overInt64)},${_stock(productId: overInt64, quantity: '3')}]',
+        ),
+      );
+      expect(error.message, contains('«ProductID» $overInt64'));
+      expect(error.message, contains(overInt64));
+      expect(overInt64, hasLength(19));
+    });
+
+    test('accepts large ProductIDs that differ by one', () {
+      const neighbor = '1290564103789190764';
+      final dataset = _parse(
+        _dataset(
+          stocksArray:
+              '[${_stock(productId: bigProductId)},${_stock(productId: neighbor, serialNumber: 'SN-0001')}]',
+        ),
+      );
+      expect(dataset.stocks.map((stock) => stock.productId.literal), [
+        bigProductId,
+        neighbor,
+      ]);
+      expect(bigProductId, hasLength(19));
+      expect(neighbor, hasLength(19));
     });
   });
 

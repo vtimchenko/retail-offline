@@ -18,8 +18,8 @@ abstract final class DatasetLimits {
 
 /// One stock row from a JSON dataset.
 ///
-/// Duplicate rows are kept. Nothing here is removed because another row
-/// looks the same.
+/// The parser rejects a second row with the same product, address and
+/// serial number. This value does not merge quantities.
 @immutable
 class DatasetStock {
   const DatasetStock({

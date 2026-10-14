@@ -15,8 +15,9 @@ final _dbNameLiteral = RegExp(r'^[A-Za-z0-9_-]+$');
 /// Checks a decoded JSON tree against the retail dataset rules.
 ///
 /// The first invalid required field throws [DatasetValidationException].
-/// Unknown object fields are ignored. Inventory is not matched to orders,
-/// and duplicate stock rows are left in place.
+/// Unknown object fields are ignored. Inventory is not matched to orders.
+/// Two stock rows with the same product, address and serial number reject
+/// the whole dataset.
 class DatasetValidator {
   const DatasetValidator();
 
@@ -68,10 +69,32 @@ class DatasetValidator {
 
   List<DatasetStock> _stocksOf(JsonObjectValue root) {
     final array = _requiredArray(root, _stocks, DatasetMessages.inDataset);
-    return [
-      for (var i = 0; i < array.items.length; i++)
-        _stock(array.items[i], i + 1),
-    ];
+    final seen = <_StockIdentity, int>{};
+    final stocks = <DatasetStock>[];
+    for (var i = 0; i < array.items.length; i++) {
+      final index = i + 1;
+      final stock = _stock(array.items[i], index);
+      final identity = _StockIdentity(
+        productId: stock.productId,
+        address: stock.address,
+        serialNumber: stock.serialNumber,
+      );
+      final firstIndex = seen[identity];
+      if (firstIndex != null) {
+        throw DatasetValidationException(
+          DatasetMessages.duplicateStock(
+            productId: stock.productId.literal,
+            address: stock.address,
+            serialNumber: stock.serialNumber,
+            firstIndex: firstIndex,
+            duplicateIndex: index,
+          ),
+        );
+      }
+      seen[identity] = index;
+      stocks.add(stock);
+    }
+    return stocks;
   }
 
   DatasetStock _stock(JsonValue value, int index) {
@@ -337,6 +360,28 @@ int _totalMinorUnits(List<DatasetGood> goods, String orderId) {
     total += amount;
   }
   return total;
+}
+
+class _StockIdentity {
+  const _StockIdentity({
+    required this.productId,
+    required this.address,
+    required this.serialNumber,
+  });
+
+  final ExactInteger productId;
+  final String address;
+  final String serialNumber;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _StockIdentity &&
+      other.productId == productId &&
+      other.address == address &&
+      other.serialNumber == serialNumber;
+
+  @override
+  int get hashCode => Object.hash(productId, address, serialNumber);
 }
 
 int? _quantityOf(String literal) {

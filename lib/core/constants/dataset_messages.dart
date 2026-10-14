@@ -74,6 +74,18 @@ abstract final class DatasetMessages {
   static String duplicateProductId(String where, String productId) =>
       '$where повторюється «ProductID» $productId.';
 
+  static String duplicateStock({
+    required String productId,
+    required String address,
+    required String serialNumber,
+    required int firstIndex,
+    required int duplicateIndex,
+  }) =>
+      'У наборі даних повторюється залишок '
+      '«ProductID» $productId, «Address» «$address», '
+      '«SerialNumber» «$serialNumber» '
+      '(позиції $firstIndex і $duplicateIndex).';
+
   static String notAnObject() => 'Набір даних має бути JSON-об’єктом.';
 
   static String invalidRecord(String where) =>

@@ -592,6 +592,61 @@ void main() {
       },
     );
 
+    test('an older notice does not replace a newer queued notice', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final first = _LoadHold();
+      repo.nextHold = first;
+      opened.transport.deliver(_remote('2', opened.fingerprint));
+      await first.entered.future;
+
+      final second = _LoadHold();
+      repo.nextHold = second;
+      opened.transport.deliver(_remote('9', opened.fingerprint));
+      opened.transport.deliver(_remote('4', opened.fingerprint));
+      first.release.complete();
+      await second.entered.future;
+      expect(repo.loads, 2);
+      second.release.complete();
+      await _turns(4);
+
+      opened.transport.deliver(_remote('8', opened.fingerprint));
+      await _turns(4);
+      expect(repo.loads, 2);
+
+      final higher = _LoadHold();
+      repo.nextHold = higher;
+      opened.transport.deliver(_remote('10', opened.fingerprint));
+      await higher.entered.future;
+      expect(repo.loads, 3);
+      higher.release.complete();
+    });
+
+    test('two explicit reloads during a load share the next result', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final firstHold = _LoadHold();
+      repo.nextHold = firstHold;
+      final first = opened.coordinator.reload();
+      await firstHold.entered.future;
+      final secondHold = _LoadHold();
+      repo.nextHold = secondHold;
+      final second = opened.coordinator.reload();
+      final third = opened.coordinator.reload();
+
+      firstHold.release.complete();
+      await secondHold.entered.future;
+      expect(repo.loads, 2);
+      final other = FulfilmentApplication(repository: repo);
+      expect(await other.load(), isA<LoadReady>());
+      expect(await reserve(other), isA<FulfilmentCommitted<ReserveResult>>());
+      secondHold.release.complete();
+
+      expect((await first as LoadReady).state.revision, 1);
+      expect((await second as LoadReady).state.revision, 2);
+      expect((await third as LoadReady).state.revision, 2);
+    });
+
     test('a conflict stays failed while reload catches up', () async {
       final repo = _LoadGateRepository();
       final opened = await _imported(repo);
@@ -877,6 +932,104 @@ void main() {
         expect(opened.transport.notices, hasLength(1));
       },
     );
+
+    test('a resume during a failed load is one follow-up', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final hold = _LoadHold();
+      repo.nextHold = hold;
+      repo.failNext = true;
+      opened.visibility.resume();
+      await hold.entered.future;
+      final follow = _LoadHold();
+      repo.nextHold = follow;
+      opened.visibility.resume();
+
+      hold.release.complete();
+      await follow.entered.future;
+      expect(repo.loads, 2);
+      expect(opened.application.block, PersistenceBlock.storageFailed);
+      follow.release.complete();
+      await _turns(4);
+
+      expect(repo.loads, 2);
+      expect(opened.application.block, isNull);
+      expect(opened.application.revision, 1);
+      expect(repo.commitAttempts, 1);
+    });
+
+    test('a resume during a thrown reload is one follow-up', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final hold = _LoadHold();
+      repo.nextHold = hold;
+      repo.throwNext = true;
+      opened.visibility.resume();
+      await hold.entered.future;
+      final follow = _LoadHold();
+      repo.nextHold = follow;
+      opened.visibility.resume();
+
+      hold.release.complete();
+      await follow.entered.future;
+      expect(repo.loads, 2);
+      follow.release.complete();
+      await _turns(4);
+
+      expect(repo.loads, 2);
+      expect(opened.application.revision, 1);
+      expect(opened.application.block, isNull);
+      expect(repo.commitAttempts, 1);
+    });
+
+    test(
+      'a resume that reads empty storage clears unresolved suppression',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        final hold = _LoadHold();
+        repo.nextHold = hold;
+        opened.transport.deliver(_remote('9', opened.fingerprint));
+        await hold.entered.future;
+        hold.release.complete();
+        await _turns(4);
+        expect(repo.loads, 1);
+
+        opened.transport.deliver(_remote('5', opened.fingerprint));
+        await _turns(4);
+        expect(repo.loads, 1);
+
+        repo.emptyNext = true;
+        final resume = _LoadHold();
+        repo.nextHold = resume;
+        opened.visibility.resume();
+        await resume.entered.future;
+        resume.release.complete();
+        await _turns(4);
+        expect(repo.loads, 2);
+        expect(opened.application.revision, isNull);
+
+        final again = _LoadHold();
+        repo.nextHold = again;
+        opened.transport.deliver(_remote('1', opened.fingerprint));
+        await again.entered.future;
+        expect(repo.loads, 3);
+        again.release.complete();
+      },
+    );
+
+    test('close before a scheduled resume runs does not reload', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+
+      opened.visibility.resume();
+      opened.coordinator.close();
+      await _turns(4);
+
+      expect(repo.loads, 0);
+      expect(opened.visibility.closeCount, 1);
+      expect(opened.coordinator.isClosed, isTrue);
+    });
   });
 }
 

@@ -38,6 +38,9 @@ dependencies:
   # (lib/services/file/xlsx_browser_picker_web.dart) uses it. Already resolved
   # transitively at this version.
   web: ^1.1.1
+  # SHA-256 of the original imported dataset bytes. Pure Dart, so the
+  # fingerprint is the same on the web and on the test VM.
+  crypto: ^3.0.6
   http: ^1.6.0
   archive: ^4.3.0
   xml: ^7.1.0

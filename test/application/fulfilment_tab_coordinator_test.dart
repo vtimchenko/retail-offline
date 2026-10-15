@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retail_offline/application/fulfilment_application.dart';
 import 'package:retail_offline/application/fulfilment_tab_coordinator.dart';
 import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
 import 'package:retail_offline/persistence/browser/storage_change_notice.dart';
 import 'package:retail_offline/persistence/dataset_fingerprint.dart';
+import 'package:retail_offline/persistence/fulfilment_repository.dart';
 
 import '../support/memory_fulfilment_repository.dart';
 import 'fulfilment_application_test.dart';
@@ -131,22 +134,570 @@ void main() {
       expect(first.senderId, isNot(second.senderId));
     });
   });
+
+  group('FulfilmentTabCoordinator remote reload', () {
+    test('a newer notice reloads once', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final hold = _LoadHold();
+      repo.nextHold = hold;
+
+      opened.transport.deliver(_remote('2', opened.fingerprint));
+      await hold.entered.future;
+
+      expect(repo.loads, 1);
+      hold.release.complete();
+      await _turns(4);
+      expect(opened.application.revision, 1);
+      expect(repo.loads, 1);
+    });
+
+    test('the local sender id is ignored', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+
+      opened.transport.deliver(_remote('2', opened.fingerprint, opened.sender));
+      await _turns(4);
+
+      expect(repo.loads, 0);
+      expect(opened.application.revision, 1);
+    });
+
+    test('an older notice is ignored', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      expect(await reserve(opened.application), isA<FulfilmentCommitted>());
+
+      opened.transport.deliver(_remote('1', opened.fingerprint));
+      await _turns(4);
+
+      expect(repo.loads, 0);
+      expect(opened.application.revision, 2);
+    });
+
+    test('an equal revision and fingerprint is ignored', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+
+      opened.transport.deliver(_remote('1', opened.fingerprint));
+      await _turns(4);
+
+      expect(repo.loads, 0);
+    });
+
+    test(
+      'a fingerprint mismatch is verified once and then suppressed',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        expect(opened.fingerprint, isNot(_otherFingerprint));
+        final hold = _LoadHold();
+        repo.nextHold = hold;
+
+        opened.transport.deliver(_remote('1', _otherFingerprint));
+        await hold.entered.future;
+        hold.release.complete();
+        await _turns(4);
+        expect(repo.loads, 1);
+        expect(opened.application.fingerprint, opened.fingerprint);
+
+        opened.transport.deliver(_remote('1', _otherFingerprint));
+        await _turns(4);
+        expect(repo.loads, 1);
+
+        final again = _LoadHold();
+        repo.nextHold = again;
+        opened.transport.deliver(_remote('2', opened.fingerprint));
+        await again.entered.future;
+        expect(repo.loads, 2);
+        again.release.complete();
+      },
+    );
+
+    test(
+      'an unresolved revision is suppressed until a higher one arrives',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        final hold = _LoadHold();
+        repo.nextHold = hold;
+
+        opened.transport.deliver(_remote('9', opened.fingerprint));
+        await hold.entered.future;
+        hold.release.complete();
+        await _turns(4);
+        expect(opened.application.revision, 1);
+        expect(repo.loads, 1);
+
+        opened.transport.deliver(_remote('9', opened.fingerprint));
+        await _turns(4);
+        expect(repo.loads, 1);
+
+        final higher = _LoadHold();
+        repo.nextHold = higher;
+        opened.transport.deliver(_remote('10', opened.fingerprint));
+        await higher.entered.future;
+        expect(repo.loads, 2);
+        higher.release.complete();
+      },
+    );
+
+    test('a burst before the load starts is one reload', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final hold = _LoadHold();
+      repo.nextHold = hold;
+
+      opened.transport.deliver(_remote('2', opened.fingerprint));
+      opened.transport.deliver(_remote('3', opened.fingerprint));
+      opened.transport.deliver(_remote('4', _otherFingerprint));
+      await hold.entered.future;
+
+      expect(repo.loads, 1);
+      hold.release.complete();
+      await _turns(4);
+      expect(repo.loads, 1);
+      expect(opened.application.revision, 1);
+    });
+
+    test('a notice during a reload is handled by one follow-up', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final first = _LoadHold();
+      repo.nextHold = first;
+      opened.transport.deliver(_remote('2', opened.fingerprint));
+      await first.entered.future;
+
+      final second = _LoadHold();
+      repo.nextHold = second;
+      opened.transport.deliver(_remote('8', opened.fingerprint));
+      opened.transport.deliver(_remote('9', opened.fingerprint));
+      first.release.complete();
+      await second.entered.future;
+
+      expect(repo.loads, 2);
+      second.release.complete();
+      await _turns(4);
+      expect(repo.loads, 2);
+    });
+
+    test('a notice during the follow-up schedules one more load', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final first = _LoadHold();
+      repo.nextHold = first;
+      opened.transport.deliver(_remote('2', opened.fingerprint));
+      await first.entered.future;
+      final second = _LoadHold();
+      repo.nextHold = second;
+      opened.transport.deliver(_remote('3', opened.fingerprint));
+      first.release.complete();
+      await second.entered.future;
+
+      final third = _LoadHold();
+      repo.nextHold = third;
+      opened.transport.deliver(_remote('4', opened.fingerprint));
+      second.release.complete();
+      await third.entered.future;
+
+      expect(repo.loads, 3);
+      third.release.complete();
+    });
+
+    test(
+      'a notice during a local command waits and does not retry it',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        final commit = repo.holdNextCommit();
+        final reserving = reserve(opened.application);
+        await commit.started;
+        final load = _LoadHold();
+        repo.nextHold = load;
+
+        opened.transport.deliver(_remote('9', opened.fingerprint));
+        commit.release();
+        final reserved = await reserving;
+
+        expect(reserved, isA<FulfilmentCommitted<ReserveResult>>());
+        final attempts = repo.commitAttempts;
+        await load.entered.future;
+        expect(repo.loads, 1);
+        expect(repo.commitAttempts, attempts);
+        load.release.complete();
+        await _turns(4);
+        expect(opened.application.revision, 2);
+        expect(repo.commitAttempts, attempts);
+      },
+    );
+
+    test('explicit reload returns the load it started', () async {
+      final opened = await _imported(_LoadGateRepository());
+
+      final result = await opened.coordinator.reload();
+
+      expect(result, isA<LoadReady>());
+      expect((result as LoadReady).state.revision, 1);
+      expect(opened.application.revision, 1);
+    });
+
+    test(
+      'an explicit reload during a load waits for the next result',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        final firstHold = _LoadHold();
+        repo.nextHold = firstHold;
+        final first = opened.coordinator.reload();
+        await firstHold.entered.future;
+        final secondHold = _LoadHold();
+        repo.nextHold = secondHold;
+        final second = opened.coordinator.reload();
+
+        firstHold.release.complete();
+        await secondHold.entered.future;
+        expect(repo.loads, 2);
+        final other = FulfilmentApplication(repository: repo);
+        expect(await other.load(), isA<LoadReady>());
+        expect(await reserve(other), isA<FulfilmentCommitted<ReserveResult>>());
+        secondHold.release.complete();
+
+        expect((await first as LoadReady).state.revision, 1);
+        expect((await second as LoadReady).state.revision, 2);
+      },
+    );
+
+    test(
+      'a failed reload stops the drain and a later notice can recover',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        final hold = _LoadHold();
+        repo.nextHold = hold;
+        repo.failNext = true;
+        opened.transport.deliver(_remote('4', opened.fingerprint));
+        await hold.entered.future;
+        final during = _LoadHold();
+        repo.nextHold = during;
+        opened.transport.deliver(_remote('5', opened.fingerprint));
+        hold.release.complete();
+        await _turns(4);
+
+        expect(repo.loads, 1);
+        expect(during.entered.isCompleted, isFalse);
+        expect(opened.application.block, PersistenceBlock.storageFailed);
+        expect(opened.application.revision, 1);
+        repo.nextHold = null;
+
+        opened.transport.deliver(_remote('4', opened.fingerprint));
+        await _turns(4);
+        expect(repo.loads, 2);
+        expect(opened.application.block, isNull);
+        expect(opened.application.revision, 1);
+      },
+    );
+
+    test(
+      'close lets the current load finish and skips the follow-up',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        final hold = _LoadHold();
+        repo.nextHold = hold;
+        final current = opened.coordinator.reload();
+        await hold.entered.future;
+        final queued = opened.coordinator.reload();
+        final queuedError = expectLater(queued, throwsA(isA<StateError>()));
+
+        opened.coordinator.close();
+        opened.coordinator.close();
+        hold.release.complete();
+
+        expect(await current, isA<LoadReady>());
+        await queuedError;
+        expect(repo.loads, 1);
+        opened.transport.deliver(_remote('3', opened.fingerprint));
+        await _turns(4);
+        expect(repo.loads, 1);
+        expect(opened.coordinator.isClosed, isTrue);
+      },
+    );
+
+    test('a throwing close stays closed', () async {
+      final opened = _Opened(senderId: _senderId, throwOnClose: true);
+      expect(
+        await opened.application.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+
+      opened.coordinator.close();
+      opened.coordinator.close();
+      final reserved = await reserve(opened.application);
+
+      expect(opened.coordinator.isClosed, isTrue);
+      expect(opened.transport.closeCount, 1);
+      expect(reserved, isA<FulfilmentCommitted<ReserveResult>>());
+      expect(opened.transport.notices, hasLength(1));
+      await expectLater(
+        opened.coordinator.reload(),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test(
+      'an unexpected reload error finishes that caller and the next reload',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        final hold = _LoadHold();
+        repo.nextHold = hold;
+        repo.throwNext = true;
+        final failed = opened.coordinator.reload();
+        final failedError = expectLater(
+          failed,
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              'reload failed',
+            ),
+          ),
+        );
+        await hold.entered.future;
+        final attempts = repo.commitAttempts;
+        final queuedHold = _LoadHold();
+        repo.nextHold = queuedHold;
+        final queued = opened.coordinator.reload();
+        opened.transport.deliver(_remote('8', opened.fingerprint));
+
+        hold.release.complete();
+        await failedError;
+        await queuedHold.entered.future;
+        expect(repo.loads, 2);
+        queuedHold.release.complete();
+
+        final queuedResult = await queued;
+        expect(queuedResult, isA<LoadReady>());
+        expect((queuedResult as LoadReady).state.revision, 1);
+        expect(opened.application.revision, 1);
+        expect(repo.commitAttempts, attempts);
+        await _turns(4);
+        expect(repo.loads, 2);
+
+        final recovered = await opened.coordinator.reload();
+        expect(recovered, isA<LoadReady>());
+        expect(repo.loads, 3);
+        expect(repo.commitAttempts, attempts);
+      },
+    );
+
+    test('a notice that throws inside reload does not retry', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      repo.throwNext = true;
+
+      opened.transport.deliver(_remote('4', opened.fingerprint));
+      await _turns(6);
+
+      expect(repo.loads, 1);
+      expect(opened.application.revision, 1);
+      expect(opened.application.block, isNull);
+      expect(await opened.coordinator.reload(), isA<LoadReady>());
+      expect(repo.loads, 2);
+      expect(repo.commitAttempts, 1);
+    });
+
+    test(
+      'an explicit empty load lets a new revision 1 notice reload',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        final hold = _LoadHold();
+        repo.nextHold = hold;
+
+        opened.transport.deliver(_remote('9', opened.fingerprint));
+        await hold.entered.future;
+        hold.release.complete();
+        await _turns(4);
+        expect(repo.loads, 1);
+
+        opened.transport.deliver(_remote('5', opened.fingerprint));
+        await _turns(4);
+        expect(repo.loads, 1);
+
+        repo.emptyNext = true;
+        final emptied = await opened.coordinator.reload();
+        expect(emptied, isA<LoadEmpty>());
+        expect(opened.application.revision, isNull);
+        expect(repo.loads, 2);
+
+        final again = _LoadHold();
+        repo.nextHold = again;
+        opened.transport.deliver(_remote('1', opened.fingerprint));
+        await again.entered.future;
+        expect(repo.loads, 3);
+        again.release.complete();
+        await _turns(4);
+        expect(opened.application.revision, 1);
+      },
+    );
+
+    test('an explicit empty load clears a stale fingerprint check', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+
+      opened.transport.deliver(_remote('1', _otherFingerprint));
+      await _turns(4);
+      expect(repo.loads, 1);
+      opened.transport.deliver(_remote('1', _otherFingerprint));
+      await _turns(4);
+      expect(repo.loads, 1);
+
+      repo.emptyNext = true;
+      expect(await opened.coordinator.reload(), isA<LoadEmpty>());
+      expect(await opened.coordinator.reload(), isA<LoadReady>());
+      expect(opened.application.revision, 1);
+
+      final again = _LoadHold();
+      repo.nextHold = again;
+      opened.transport.deliver(_remote('1', _otherFingerprint));
+      await again.entered.future;
+      expect(repo.loads, 4);
+      again.release.complete();
+    });
+
+    test(
+      'a notice that reads empty storage still suppresses that revision',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        repo.emptyNext = true;
+
+        opened.transport.deliver(_remote('4', opened.fingerprint));
+        await _turns(4);
+        expect(repo.loads, 1);
+        expect(opened.application.revision, isNull);
+
+        opened.transport.deliver(_remote('4', opened.fingerprint));
+        await _turns(4);
+        expect(repo.loads, 1);
+
+        final higher = _LoadHold();
+        repo.nextHold = higher;
+        opened.transport.deliver(_remote('5', opened.fingerprint));
+        await higher.entered.future;
+        expect(repo.loads, 2);
+        higher.release.complete();
+      },
+    );
+
+    test('a conflict stays failed while reload catches up', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final other = FulfilmentApplication(repository: repo);
+      expect(await other.load(), isA<LoadReady>());
+      expect(await reserve(other), isA<FulfilmentCommitted<ReserveResult>>());
+
+      final conflict = await reserve(opened.application);
+      final attempts = repo.commitAttempts;
+
+      expect(conflict, isA<FulfilmentBlocked<ReserveResult>>());
+      expect(opened.application.block, PersistenceBlock.revisionConflict);
+      opened.transport.deliver(_remote('2', opened.fingerprint));
+      await _turns(6);
+
+      expect(conflict, isA<FulfilmentBlocked<ReserveResult>>());
+      expect(opened.application.revision, 2);
+      expect(opened.application.block, isNull);
+      expect(repo.commitAttempts, attempts);
+    });
+  });
 }
 
 const _senderId = '0123456789abcdef0123456789abcdef';
+
+const _otherFingerprint =
+    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+StorageChangeNotice _remote(
+  String revision,
+  String fingerprint, [
+  String senderId = 'remote-tab',
+]) {
+  return StorageChangeNotice(
+    revision: revision,
+    fingerprint: fingerprint,
+    senderId: senderId,
+  );
+}
+
+Future<void> _turns(int count) async {
+  for (var index = 0; index < count; index++) {
+    await Future<void>.value();
+  }
+}
+
+Future<_Opened> _imported(_LoadGateRepository repository) async {
+  final opened = _Opened(repository: repository, senderId: _senderId);
+  expect(
+    await opened.application.importDataset(datasetBytes()),
+    isA<FulfilmentImported>(),
+  );
+  opened.fingerprint = opened.application.fingerprint!;
+  opened.sender = opened.coordinator.senderId;
+  return opened;
+}
+
+final class _LoadHold {
+  final Completer<void> entered = Completer<void>();
+  final Completer<void> release = Completer<void>();
+}
+
+final class _LoadGateRepository extends MemoryFulfilmentRepository {
+  _LoadHold? nextHold;
+  var loads = 0;
+  var failNext = false;
+  var throwNext = false;
+  var emptyNext = false;
+
+  @override
+  Future<LoadResult> load() async {
+    loads++;
+    final hold = nextHold;
+    nextHold = null;
+    if (hold != null && !hold.entered.isCompleted) hold.entered.complete();
+    if (hold != null) await hold.release.future;
+    if (throwNext) {
+      throwNext = false;
+      throw StateError('reload failed');
+    }
+    if (emptyNext) {
+      emptyNext = false;
+      return const LoadEmpty();
+    }
+    if (failNext) {
+      failNext = false;
+      return const LoadStorageFailed();
+    }
+    return super.load();
+  }
+}
 
 final class _Opened {
   _Opened({
     bool available = true,
     bool throwOnPublish = false,
+    bool throwOnClose = false,
     String? senderId,
+    MemoryFulfilmentRepository? repository,
   }) : transport = _RecordingTransport(
          available: available,
          throwOnPublish: throwOnPublish,
+         throwOnClose: throwOnClose,
        ),
-       repository = MemoryFulfilmentRepository() {
+       repository = repository ?? MemoryFulfilmentRepository() {
     coordinator = FulfilmentTabCoordinator.open(
-      repository: repository,
+      repository: this.repository,
       databaseName: 'retail-offline-test',
       transport: transport,
       senderId: senderId,
@@ -156,17 +707,25 @@ final class _Opened {
   final MemoryFulfilmentRepository repository;
   final _RecordingTransport transport;
   late final FulfilmentTabCoordinator coordinator;
+  late String fingerprint;
+  late String sender;
 
   FulfilmentApplication get application => coordinator.application;
 }
 
 final class _RecordingTransport implements StorageChangeTransport {
-  _RecordingTransport({required this.available, required this.throwOnPublish});
+  _RecordingTransport({
+    required this.available,
+    required this.throwOnPublish,
+    required this.throwOnClose,
+  });
 
   final bool available;
   final bool throwOnPublish;
+  final bool throwOnClose;
   final List<StorageChangeNotice> notices = [];
   var closeCount = 0;
+  void Function(StorageChangeNotice notice)? _listener;
 
   @override
   bool get isAvailable => available;
@@ -180,10 +739,19 @@ final class _RecordingTransport implements StorageChangeTransport {
   }
 
   @override
-  void listen(void Function(StorageChangeNotice notice) onNotice) {}
+  void listen(void Function(StorageChangeNotice notice) onNotice) {
+    _listener = onNotice;
+  }
+
+  void deliver(StorageChangeNotice notice) {
+    final listener = _listener;
+    if (listener != null) listener(notice);
+  }
 
   @override
   void close() {
     closeCount++;
+    _listener = null;
+    if (throwOnClose) throw StateError('close failed');
   }
 }

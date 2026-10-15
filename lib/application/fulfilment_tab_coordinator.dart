@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import '../persistence/browser/storage_change_channel.dart';
@@ -55,11 +56,12 @@ final class ChannelStorageChangeTransport implements StorageChangeTransport {
   }
 }
 
-/// Publishes a [StorageChangeNotice] after each successful local commit.
+/// Publishes a [StorageChangeNotice] after each successful local commit and
+/// reloads [application] when a remote notice says storage may be ahead.
 ///
 /// The coordinator owns the transport and the sender id. [application] owns
-/// the session. This type does not reload storage and does not retry a
-/// command.
+/// the session. A notice is not copied into the session. A failed command is
+/// not run again.
 final class FulfilmentTabCoordinator {
   /// Creates [application] and connects its commit hook to this coordinator.
   ///
@@ -96,6 +98,7 @@ final class FulfilmentTabCoordinator {
       transport: storage,
       senderId: id,
     );
+    storage.listen(coordinator._onRemote);
     return coordinator;
   }
 
@@ -116,18 +119,59 @@ final class FulfilmentTabCoordinator {
 
   final StorageChangeTransport _transport;
   var _closed = false;
+  var _active = false;
+  var _startScheduled = false;
+  var _pending = false;
+  var _nextId = 0;
+  int? _inflightId;
+  StorageChangeNotice? _target;
+  StorageChangeNotice? _queuedNotice;
+  String? _mismatchCheckedRevision;
+  String? _unresolvedRevision;
+  final Map<int, List<Completer<LoadResult>>> _waiters = {};
 
   /// Whether [close] has run.
   bool get isClosed => _closed;
 
-  /// Closes the transport.
+  /// Reads storage through [application].
+  ///
+  /// The result belongs to a load that starts after this call, or to a load
+  /// that is already scheduled and has not started. A load that is already
+  /// waiting on storage is left to its own caller.
+  ///
+  /// After [close], the future completes with a [StateError]. A request that
+  /// was waiting for a load that had not started also completes with that
+  /// error. A load that had already started still returns its [LoadResult].
+  Future<LoadResult> reload() {
+    if (_closed) return Future<LoadResult>.error(_closedError());
+    final completer = Completer<LoadResult>();
+    (_waiters[_nextId] ??= <Completer<LoadResult>>[]).add(completer);
+    if (_active) {
+      _pending = true;
+    } else {
+      _schedule();
+    }
+    return completer.future;
+  }
+
+  /// Closes the transport and refuses later reloads.
   ///
   /// A second call does nothing. The application and its repository stay
-  /// open. Later commits do not publish.
+  /// open. An in-flight [reload] is allowed to finish, and no follow-up
+  /// starts. A throw from the transport is ignored; this coordinator is
+  /// already closed.
   void close() {
     if (_closed) return;
     _closed = true;
-    _transport.close();
+    _pending = false;
+    _target = null;
+    _queuedNotice = null;
+    try {
+      _transport.close();
+    } on Object {
+      // Later commits and notices are already ignored.
+    }
+    _rejectUnstarted(_closedError());
   }
 
   void _onCommitted(String revision, String fingerprint) {
@@ -144,7 +188,188 @@ final class FulfilmentTabCoordinator {
       // The commit already succeeded. Publishing cannot change it.
     }
   }
+
+  void _onRemote(StorageChangeNotice notice) {
+    if (_closed || notice.senderId == senderId) return;
+    if (!_accepts(notice)) return;
+    if (_active) {
+      _queuedNotice = _preferNewer(_queuedNotice, notice);
+      _pending = true;
+      return;
+    }
+    _target = _preferNewer(_target, notice);
+    _schedule();
+  }
+
+  /// Whether [notice] is newer than memory, or an unchecked fingerprint
+  /// mismatch at the same revision.
+  bool _accepts(StorageChangeNotice notice) {
+    final local = application.revision?.toString();
+    if (local == null || _compareRevision(notice.revision, local) > 0) {
+      final ceiling = _unresolvedRevision;
+      if (ceiling != null && _compareRevision(notice.revision, ceiling) <= 0) {
+        return false;
+      }
+      return true;
+    }
+    if (_compareRevision(notice.revision, local) < 0) return false;
+    if (notice.fingerprint == application.fingerprint) return false;
+    return _mismatchCheckedRevision != local;
+  }
+
+  void _schedule() {
+    if (_closed || _active || _startScheduled) return;
+    _startScheduled = true;
+    scheduleMicrotask(_startDrain);
+  }
+
+  void _startDrain() {
+    _startScheduled = false;
+    if (_closed || _active) return;
+    if (_target == null && _waiters.isEmpty) return;
+    _active = true;
+    unawaited(_drain());
+  }
+
+  Future<void> _drain() async {
+    try {
+      while (!_closed) {
+        _pending = false;
+        final trigger = _target;
+        _target = null;
+        final startId = _nextId++;
+        _inflightId = startId;
+        final LoadResult result;
+        try {
+          result = await application.reload();
+        } on Object catch (error, stackTrace) {
+          _inflightId = null;
+          _fail(startId, error, stackTrace);
+          if (_closed) return;
+          _pending = false;
+          _queuedNotice = null;
+          _target = null;
+          return;
+        }
+        _inflightId = null;
+        _complete(startId, result);
+        if (_closed) return;
+        if (result is! LoadReady && result is! LoadEmpty) {
+          _pending = false;
+          _queuedNotice = null;
+          _target = null;
+          return;
+        }
+        _remember(result, trigger);
+        if (_queuedNotice != null) {
+          _target = _preferNewer(_target, _queuedNotice!);
+          _queuedNotice = null;
+          _pending = true;
+        }
+        if (!_pending) return;
+      }
+    } finally {
+      _active = false;
+      _inflightId = null;
+      if (!_closed && (_waiters.isNotEmpty || _target != null)) {
+        _schedule();
+      }
+    }
+  }
+
+  void _remember(LoadResult result, StorageChangeNotice? trigger) {
+    if (result is LoadEmpty) {
+      _mismatchCheckedRevision = null;
+      if (trigger == null) {
+        _unresolvedRevision = null;
+      } else {
+        _unresolvedRevision = _maxRevision(
+          _unresolvedRevision,
+          trigger.revision,
+        );
+      }
+      return;
+    }
+    if (result is! LoadReady) return;
+    final local = application.revision!.toString();
+    if (trigger == null) {
+      if (_unresolvedRevision != null &&
+          _compareRevision(local, _unresolvedRevision!) >= 0) {
+        _unresolvedRevision = null;
+      }
+      if (_mismatchCheckedRevision != null &&
+          _mismatchCheckedRevision != local) {
+        _mismatchCheckedRevision = null;
+      }
+      return;
+    }
+    if (_compareRevision(trigger.revision, local) > 0) {
+      _unresolvedRevision = _maxRevision(_unresolvedRevision, trigger.revision);
+      return;
+    }
+    _unresolvedRevision = null;
+    if (trigger.revision == local &&
+        trigger.fingerprint != application.fingerprint) {
+      _mismatchCheckedRevision = local;
+    } else if (_mismatchCheckedRevision != local) {
+      _mismatchCheckedRevision = null;
+    }
+  }
+
+  void _complete(int startId, LoadResult result) {
+    final waiting = _waiters.remove(startId);
+    if (waiting == null) return;
+    for (final waiter in waiting) {
+      if (!waiter.isCompleted) waiter.complete(result);
+    }
+  }
+
+  void _fail(int startId, Object error, StackTrace stackTrace) {
+    final waiting = _waiters.remove(startId);
+    if (waiting == null) return;
+    for (final waiter in waiting) {
+      if (!waiter.isCompleted) waiter.completeError(error, stackTrace);
+    }
+  }
+
+  void _rejectUnstarted(StateError error) {
+    final inflight = _inflightId;
+    final pending = Map<int, List<Completer<LoadResult>>>.of(_waiters);
+    for (final entry in pending.entries) {
+      if (entry.key == inflight) continue;
+      _waiters.remove(entry.key);
+      for (final waiter in entry.value) {
+        if (!waiter.isCompleted) waiter.completeError(error);
+      }
+    }
+  }
 }
+
+StorageChangeNotice _preferNewer(
+  StorageChangeNotice? current,
+  StorageChangeNotice incoming,
+) {
+  if (current == null) return incoming;
+  final order = _compareRevision(incoming.revision, current.revision);
+  if (order >= 0) return incoming;
+  return current;
+}
+
+String _maxRevision(String? current, String incoming) {
+  if (current == null || _compareRevision(incoming, current) > 0) {
+    return incoming;
+  }
+  return current;
+}
+
+/// Longer canonical decimal text is greater. Equal lengths use code-unit
+/// order, which matches numeric order when there are no leading zeros.
+int _compareRevision(String left, String right) {
+  if (left.length != right.length) return left.length.compareTo(right.length);
+  return left.compareTo(right);
+}
+
+StateError _closedError() => StateError('FulfilmentTabCoordinator is closed.');
 
 String _generateSenderId(Random random) {
   final buffer = StringBuffer();

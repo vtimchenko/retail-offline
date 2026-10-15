@@ -78,6 +78,7 @@ jobs:
           flutter test --platform chrome test/services/json/json_dataset_browser_test.dart
           flutter test --platform chrome test/services/json/cumulative_json_export_browser_test.dart
           flutter test --platform chrome test/services/xlsx_browser_picker_test.dart
+          flutter test --platform chrome test/services/file/export_share_browser_test.dart
 
       - name: Build Flutter Web
         run: flutter build web --release --base-href "/retail-offline/"

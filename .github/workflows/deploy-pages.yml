@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+  pull_request:
+    branches:
+      - main
+
   workflow_dispatch:
 
 permissions:
@@ -12,9 +16,11 @@ permissions:
   pages: write
   id-token: write
 
+# Production deploys share one group and are never cancelled.
+# A pull request uses its own group, so it cannot cancel a deploy.
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('pages-pr-{0}', github.event.pull_request.number) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -43,18 +49,51 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Set up Chrome
+        run: |
+          set -euo pipefail
+          if command -v google-chrome >/dev/null 2>&1; then
+            chrome="$(command -v google-chrome)"
+          elif command -v google-chrome-stable >/dev/null 2>&1; then
+            chrome="$(command -v google-chrome-stable)"
+          elif command -v chromium >/dev/null 2>&1; then
+            chrome="$(command -v chromium)"
+          elif command -v chromium-browser >/dev/null 2>&1; then
+            chrome="$(command -v chromium-browser)"
+          else
+            sudo apt-get update
+            sudo apt-get install -y wget ca-certificates
+            wget -q -O /tmp/google-chrome-stable.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+            sudo apt-get install -y /tmp/google-chrome-stable.deb
+            chrome="$(command -v google-chrome)"
+          fi
+          echo "CHROME_EXECUTABLE=${chrome}" >> "$GITHUB_ENV"
+          "${chrome}" --version
+
+      # @TestOn('browser') files are skipped by `flutter test`.
+      - name: Run browser tests
+        timeout-minutes: 20
+        run: |
+          flutter test --platform chrome test/persistence/indexeddb_fulfilment_repository_browser_test.dart
+          flutter test --platform chrome test/services/json/json_dataset_browser_test.dart
+          flutter test --platform chrome test/services/json/cumulative_json_export_browser_test.dart
+          flutter test --platform chrome test/services/xlsx_browser_picker_test.dart
+
       - name: Build Flutter Web
         run: flutter build web --release --base-href "/retail-offline/"
 
       - name: Setup GitHub Pages
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/configure-pages@v5
 
       - name: Upload GitHub Pages artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-pages-artifact@v4
         with:
           path: build/web
 
   deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

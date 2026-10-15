@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/exact_integer.dart';
 import '../../models/retail_dataset.dart';
+import 'session_snapshot.dart';
 
 /// Fulfilment overlay for one active [RetailDataset].
 ///
@@ -86,6 +87,47 @@ class FulfilmentSession {
     );
   }
 
+  /// Builds a session from [snapshot] when every stored invariant holds.
+  ///
+  /// This does not call [reserve]. That method may apply fewer units than a
+  /// snapshot records, which would hide an invalid quantity. Derived stock
+  /// totals are computed from the reservation entries after validation.
+  /// [expectedFingerprint] is compared with
+  /// [SessionSnapshot.datasetFingerprint]. Both values must be 64 lowercase
+  /// hexadecimal characters. This method does not hash [dataset].
+  ///
+  /// The first failing check rejects the whole snapshot. Nothing is dropped,
+  /// capped, or rewritten. A failure returns [SessionRestoreRejected] and
+  /// does not allocate a session.
+  static RestoreSessionResult restore({
+    required RetailDataset dataset,
+    required SessionSnapshot snapshot,
+    required String expectedFingerprint,
+  }) {
+    if (snapshot.schemaVersion != SessionSnapshot.supportedSchemaVersion) {
+      return const SessionRestoreRejected(
+        SessionRestoreViolation(SessionRestoreReason.unsupportedVersion),
+      );
+    }
+    if (!SessionSnapshot.hasFingerprintFormat(snapshot.datasetFingerprint) ||
+        !SessionSnapshot.hasFingerprintFormat(expectedFingerprint)) {
+      return const SessionRestoreRejected(
+        SessionRestoreViolation(SessionRestoreReason.invalidFingerprint),
+      );
+    }
+    if (snapshot.datasetFingerprint != expectedFingerprint) {
+      return const SessionRestoreRejected(
+        SessionRestoreViolation(SessionRestoreReason.fingerprintMismatch),
+      );
+    }
+    return switch (open(dataset)) {
+      DatasetRejected(:final problem) => SessionRestoreRejected(
+        RestoreDatasetRejected(problem),
+      ),
+      DatasetOpened(:final session) => session._restoreFrom(snapshot),
+    };
+  }
+
   /// Dataset whose stock and orders this overlay refers to.
   final RetailDataset dataset;
 
@@ -94,6 +136,22 @@ class FulfilmentSession {
   final Map<StockKey, int> _reservedByStock;
   final Set<String> _issuedOrderIds;
   final Set<String> _exportedOrderIds;
+
+  /// Copies the independent overlay into a [SessionSnapshot].
+  ///
+  /// [datasetFingerprint] is stored as supplied. This does not hash the
+  /// dataset and does not check the fingerprint format. Derived stock totals
+  /// are omitted. Known reservation slots follow dataset stock order, and
+  /// issued and exported ids follow dataset order.
+  SessionSnapshot capture({required String datasetFingerprint}) {
+    return SessionSnapshot(
+      schemaVersion: SessionSnapshot.supportedSchemaVersion,
+      datasetFingerprint: datasetFingerprint,
+      reservations: _captureReservations(),
+      issuedOrderIds: _captureIds(_issuedOrderIds),
+      exportedOrderIds: _captureIds(_exportedOrderIds),
+    );
+  }
 
   /// Derived status of [orderId], or `null` when the dataset has no such
   /// order.
@@ -460,6 +518,246 @@ class FulfilmentSession {
         if (blocking.isNotEmpty) return ReplacementBlocked(blocking);
         return DatasetReplaced(session: session);
     }
+  }
+
+  RestoreSessionResult _restoreFrom(SessionSnapshot snapshot) {
+    final reservations = <LineKey, Map<StockKey, int>>{};
+    final reservedByStock = <StockKey, int>{};
+    final seen = <_ReservationIdentity>{};
+
+    for (final entry in snapshot.reservations) {
+      final violation = _reservationViolation(
+        entry,
+        reservations,
+        reservedByStock,
+        seen,
+      );
+      if (violation != null) return SessionRestoreRejected(violation);
+    }
+
+    final issued = <String>{};
+    for (final orderId in snapshot.issuedOrderIds) {
+      final violation = _issuedViolation(orderId, issued, reservations);
+      if (violation != null) return SessionRestoreRejected(violation);
+    }
+
+    final exported = <String>{};
+    for (final orderId in snapshot.exportedOrderIds) {
+      final violation = _exportedViolation(orderId, exported, issued);
+      if (violation != null) return SessionRestoreRejected(violation);
+    }
+
+    return SessionRestored(
+      FulfilmentSession._(
+        dataset: dataset,
+        catalogue: _catalogue,
+        reservations: Map.unmodifiable({
+          for (final entry in reservations.entries)
+            entry.key: Map<StockKey, int>.unmodifiable(entry.value),
+        }),
+        reservedByStock: Map<StockKey, int>.unmodifiable(reservedByStock),
+        issuedOrderIds: Set.unmodifiable(issued),
+        exportedOrderIds: Set.unmodifiable(exported),
+      ),
+    );
+  }
+
+  SessionRestoreViolation? _reservationViolation(
+    SnapshotReservation entry,
+    Map<LineKey, Map<StockKey, int>> reservations,
+    Map<StockKey, int> reservedByStock,
+    Set<_ReservationIdentity> seen,
+  ) {
+    if (entry.quantity < 1 || entry.quantity > DatasetLimits.maxQuantity) {
+      return _entryViolation(SessionRestoreReason.invalidQuantity, entry);
+    }
+    final order = _catalogue.ordersById[entry.orderId];
+    if (order == null) {
+      return _entryViolation(SessionRestoreReason.unknownOrder, entry);
+    }
+    final line = LineKey(entry.orderId, entry.productId);
+    final good = _catalogue.goodsByLine[line];
+    if (good == null) {
+      return _entryViolation(SessionRestoreReason.unknownLine, entry);
+    }
+    if (good.isServiceGood) {
+      return _entryViolation(SessionRestoreReason.serviceReservation, entry);
+    }
+    if (good.isParcel && entry.serialNumber != good.parcelTtn) {
+      return _entryViolation(SessionRestoreReason.parcelMismatch, entry);
+    }
+    final stock = StockKey(
+      productId: entry.productId,
+      address: entry.address,
+      serialNumber: entry.serialNumber,
+    );
+    final stockQuantity = _catalogue.stockQuantity[stock];
+    if (stockQuantity == null) {
+      return _entryViolation(SessionRestoreReason.unknownStock, entry);
+    }
+    if (!seen.add(_ReservationIdentity(line, stock))) {
+      return _entryViolation(SessionRestoreReason.duplicateReservation, entry);
+    }
+
+    var lineTotal = entry.quantity;
+    final existing = reservations[line];
+    if (existing != null) {
+      for (final quantity in existing.values) {
+        lineTotal += quantity;
+      }
+    }
+    if (lineTotal > good.quantity) {
+      return _entryViolation(SessionRestoreReason.lineOverReserved, entry);
+    }
+    final stockTotal = (reservedByStock[stock] ?? 0) + entry.quantity;
+    if (stockTotal > stockQuantity) {
+      return _entryViolation(SessionRestoreReason.stockOverReserved, entry);
+    }
+    reservations.putIfAbsent(line, () => <StockKey, int>{})[stock] =
+        entry.quantity;
+    reservedByStock[stock] = stockTotal;
+    return null;
+  }
+
+  SessionRestoreViolation? _issuedViolation(
+    String orderId,
+    Set<String> issued,
+    Map<LineKey, Map<StockKey, int>> reservations,
+  ) {
+    if (!issued.add(orderId)) {
+      return SessionRestoreViolation(
+        SessionRestoreReason.duplicateIssued,
+        orderId: orderId,
+      );
+    }
+    final order = _catalogue.ordersById[orderId];
+    if (order == null) {
+      return SessionRestoreViolation(
+        SessionRestoreReason.unknownIssued,
+        orderId: orderId,
+      );
+    }
+    if (!_meetsIssueRequirement(order, reservations)) {
+      return SessionRestoreViolation(
+        SessionRestoreReason.issuedNotReady,
+        orderId: orderId,
+      );
+    }
+    return null;
+  }
+
+  SessionRestoreViolation? _exportedViolation(
+    String orderId,
+    Set<String> exported,
+    Set<String> issued,
+  ) {
+    if (!exported.add(orderId)) {
+      return SessionRestoreViolation(
+        SessionRestoreReason.duplicateExported,
+        orderId: orderId,
+      );
+    }
+    if (!_catalogue.ordersById.containsKey(orderId)) {
+      return SessionRestoreViolation(
+        SessionRestoreReason.unknownExported,
+        orderId: orderId,
+      );
+    }
+    if (!issued.contains(orderId)) {
+      return SessionRestoreViolation(
+        SessionRestoreReason.exportedNotIssued,
+        orderId: orderId,
+      );
+    }
+    return null;
+  }
+
+  bool _meetsIssueRequirement(
+    DatasetOrder order,
+    Map<LineKey, Map<StockKey, int>> reservations,
+  ) {
+    for (final good in order.goods) {
+      if (good.isServiceGood) continue;
+      final slots =
+          reservations[LineKey(order.orderId, good.productId.literal)];
+      var reserved = 0;
+      if (slots != null) {
+        for (final quantity in slots.values) {
+          reserved += quantity;
+        }
+      }
+      if (reserved != good.quantity) return false;
+    }
+    return true;
+  }
+
+  List<SnapshotReservation> _captureReservations() {
+    final entries = <SnapshotReservation>[];
+    final visited = <LineKey>{};
+    for (final order in dataset.orders) {
+      for (final good in order.goods) {
+        final line = LineKey(order.orderId, good.productId.literal);
+        final slots = _reservations[line];
+        if (slots == null) continue;
+        visited.add(line);
+        final pending = Map<StockKey, int>.of(slots);
+        for (final stock in dataset.stocks) {
+          final key = StockKey.fromStock(stock);
+          final quantity = pending.remove(key);
+          if (quantity == null) continue;
+          entries.add(_snapshotEntry(line.orderId, key, quantity));
+        }
+        for (final leftover in pending.entries) {
+          entries.add(
+            _snapshotEntry(line.orderId, leftover.key, leftover.value),
+          );
+        }
+      }
+    }
+    for (final line in _reservations.entries) {
+      if (visited.contains(line.key)) continue;
+      for (final slot in line.value.entries) {
+        entries.add(_snapshotEntry(line.key.orderId, slot.key, slot.value));
+      }
+    }
+    return entries;
+  }
+
+  SnapshotReservation _snapshotEntry(
+    String orderId,
+    StockKey stock,
+    int quantity,
+  ) {
+    return SnapshotReservation(
+      orderId: orderId,
+      productId: stock.productId,
+      address: stock.address,
+      serialNumber: stock.serialNumber,
+      quantity: quantity,
+    );
+  }
+
+  List<String> _captureIds(Set<String> ids) {
+    final captured = <String>[];
+    final remaining = Set<String>.of(ids);
+    for (final order in dataset.orders) {
+      if (remaining.remove(order.orderId)) captured.add(order.orderId);
+    }
+    captured.addAll(remaining);
+    return captured;
+  }
+
+  SessionRestoreViolation _entryViolation(
+    SessionRestoreReason reason,
+    SnapshotReservation entry,
+  ) {
+    return SessionRestoreViolation(
+      reason,
+      orderId: entry.orderId,
+      productId: entry.productId,
+      address: entry.address,
+      serialNumber: entry.serialNumber,
+    );
   }
 
   bool _isLocked(String orderId) => _issuedOrderIds.contains(orderId);
@@ -964,6 +1262,158 @@ final class ReplacementRejected extends ReplaceDatasetResult {
 
   @override
   String toString() => 'ReplacementRejected($problem)';
+}
+
+/// Result of [FulfilmentSession.restore].
+sealed class RestoreSessionResult {
+  const RestoreSessionResult();
+}
+
+/// [session] holds the snapshot's reservations and order flags.
+final class SessionRestored extends RestoreSessionResult {
+  /// Creates a successful restore result.
+  const SessionRestored(this.session);
+
+  /// The session built from the snapshot and its dataset.
+  final FulfilmentSession session;
+}
+
+/// The snapshot was rejected and no session was built.
+final class SessionRestoreRejected extends RestoreSessionResult {
+  /// Creates a rejected restore result.
+  const SessionRestoreRejected(this.failure);
+
+  /// The first invariant that failed.
+  final SessionRestoreFailure failure;
+
+  @override
+  String toString() => 'SessionRestoreRejected($failure)';
+}
+
+/// Why [FulfilmentSession.restore] built no session.
+sealed class SessionRestoreFailure {
+  const SessionRestoreFailure();
+}
+
+/// One snapshot invariant failed.
+final class SessionRestoreViolation extends SessionRestoreFailure {
+  /// Creates a snapshot violation.
+  ///
+  /// Identity fields are set when the failure belongs to one reservation or
+  /// one order id.
+  const SessionRestoreViolation(
+    this.reason, {
+    this.orderId,
+    this.productId,
+    this.address,
+    this.serialNumber,
+  });
+
+  /// Which check rejected the snapshot.
+  final SessionRestoreReason reason;
+
+  /// Affected order id, when the failure belongs to one order or entry.
+  final String? orderId;
+
+  /// Affected product literal, when the failure belongs to one entry.
+  final String? productId;
+
+  /// Affected stock address, when the failure belongs to one entry.
+  final String? address;
+
+  /// Affected stock serial, when the failure belongs to one entry.
+  final String? serialNumber;
+
+  @override
+  String toString() =>
+      'SessionRestoreViolation($reason, order: $orderId, '
+      'product: $productId, $address, $serialNumber)';
+}
+
+/// [FulfilmentSession.open] rejected [problem] before the overlay was read.
+final class RestoreDatasetRejected extends SessionRestoreFailure {
+  /// Creates a dataset rejection from restore.
+  const RestoreDatasetRejected(this.problem);
+
+  /// The duplicate identity that prevented the dataset from opening.
+  final DatasetProblem problem;
+
+  @override
+  String toString() => 'RestoreDatasetRejected($problem)';
+}
+
+/// Why a snapshot cannot become a [FulfilmentSession].
+enum SessionRestoreReason {
+  /// [SessionSnapshot.schemaVersion] is not the supported version.
+  unsupportedVersion,
+
+  /// A fingerprint is not 64 lowercase hexadecimal characters.
+  invalidFingerprint,
+
+  /// The snapshot fingerprint and the expected fingerprint differ.
+  fingerprintMismatch,
+
+  /// A reservation names an order the dataset does not contain.
+  unknownOrder,
+
+  /// A reservation names a product the order does not contain.
+  unknownLine,
+
+  /// A reservation names a stock slot the dataset does not contain.
+  unknownStock,
+
+  /// Two entries share one order line and one stock slot.
+  duplicateReservation,
+
+  /// A quantity is below 1 or above [DatasetLimits.maxQuantity].
+  invalidQuantity,
+
+  /// Reserved units on a line exceed that line's ordered quantity.
+  lineOverReserved,
+
+  /// Reserved units on a slot exceed that slot's stock quantity.
+  stockOverReserved,
+
+  /// A service line has a reservation.
+  serviceReservation,
+
+  /// A parcel reservation serial is not that line's ParcelTTN.
+  parcelMismatch,
+
+  /// An issued id is repeated.
+  duplicateIssued,
+
+  /// An issued id is not in the dataset.
+  unknownIssued,
+
+  /// An issued order does not meet the readiness rule.
+  issuedNotReady,
+
+  /// An exported id is repeated.
+  duplicateExported,
+
+  /// An exported id is not in the dataset.
+  unknownExported,
+
+  /// An exported id is not issued.
+  exportedNotIssued,
+}
+
+@immutable
+class _ReservationIdentity {
+  const _ReservationIdentity(this.line, this.stock);
+
+  final LineKey line;
+  final StockKey stock;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ReservationIdentity &&
+      other.line == line &&
+      other.stock == stock;
+
+  @override
+  int get hashCode => Object.hash(line, stock);
 }
 
 class _Catalogue {

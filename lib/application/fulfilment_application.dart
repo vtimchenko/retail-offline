@@ -37,15 +37,27 @@ enum PersistenceBlock {
 /// report success from here.
 class FulfilmentApplication {
   /// Creates a service that reads and writes through [repository].
+  ///
+  /// [onCommitted] runs synchronously after a successful commit is this
+  /// instance's active state. The arguments are the decimal revision text
+  /// and the dataset fingerprint. An exception from [onCommitted] is ignored.
+  /// Load and reload do not call it.
   FulfilmentApplication({
     required this.repository,
     DatasetByteRestore? datasets,
     CumulativeJsonExport? exports,
+    this.onCommitted,
   }) : _datasets = datasets ?? const DatasetByteRestore(),
        _exports = exports ?? const CumulativeJsonExport();
 
   /// Persistence port. Tests supply an in-memory implementation.
   final FulfilmentRepository repository;
+
+  /// Called after a successful commit is the active state.
+  ///
+  /// The first argument is [revision] as decimal text. The second is
+  /// [fingerprint]. Null when the caller does not need commit notifications.
+  final void Function(String revision, String fingerprint)? onCommitted;
 
   final DatasetByteRestore _datasets;
   final CumulativeJsonExport _exports;
@@ -118,6 +130,7 @@ class FulfilmentApplication {
           _revision = committed.revision;
           _fingerprint = restored.fingerprint;
           _export = null;
+          _notifyCommitted();
           return FulfilmentImported(
             session: session,
             revision: committed.revision,
@@ -259,6 +272,7 @@ class FulfilmentApplication {
               _revision = committed.revision;
               _fingerprint = fingerprint;
               _export = null;
+              _notifyCommitted();
               return FulfilmentReplaced(
                 session: session,
                 revision: committed.revision,
@@ -308,6 +322,7 @@ class FulfilmentApplication {
           _session = pendingSession;
           _revision = committed.revision;
           _export = document;
+          _notifyCommitted();
           return FulfilmentExported(
             session: pendingSession,
             revision: committed.revision,
@@ -349,6 +364,7 @@ class FulfilmentApplication {
       }
       _session = candidate;
       _revision = committed.revision;
+      _notifyCommitted();
       return FulfilmentCommitted<T>(
         outcome.result,
         session: candidate,
@@ -382,6 +398,24 @@ class FulfilmentApplication {
         _block = PersistenceBlock.unsupportedVersion;
     }
     return result;
+  }
+
+  /// Notifies [onCommitted] with the revision and fingerprint already stored.
+  ///
+  /// Runs only after a [CommitSucceeded] assignment. A callback failure cannot
+  /// change that assignment or the command result.
+  void _notifyCommitted() {
+    final notify = onCommitted;
+    final revision = _revision;
+    final fingerprint = _fingerprint;
+    if (notify == null || revision == null || fingerprint == null) {
+      return;
+    }
+    try {
+      notify(revision.toString(), fingerprint);
+    } catch (_) {
+      // The commit already succeeded. The callback cannot undo it.
+    }
   }
 
   PersistenceBlock _blockFor(CommitResult result) {

@@ -8,6 +8,8 @@ import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
 import 'package:retail_offline/domain/fulfilment/session_snapshot.dart';
 import 'package:retail_offline/persistence/dataset_fingerprint.dart';
 import 'package:retail_offline/persistence/fulfilment_repository.dart';
+import 'package:retail_offline/services/file/cumulative_export_share.dart';
+import 'package:retail_offline/services/file/export_share.dart';
 import 'package:retail_offline/services/json/cumulative_json_export.dart';
 import 'package:retail_offline/services/json/precision_json_decoder.dart';
 
@@ -1536,6 +1538,264 @@ void main() {
       },
     );
   });
+
+  group('commit notifications', () {
+    test('notifies each successful commit in order', () async {
+      final log = _CommitLog();
+      final app = log.app;
+      final fingerprint = DatasetFingerprint.of(datasetBytes());
+
+      expect(
+        await app.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+      expect(await reserve(app), isA<FulfilmentCommitted<ReserveResult>>());
+      expect(
+        await app.removeUnits(
+          orderId: 'ORD-1',
+          productId: productId,
+          address: address,
+          serialNumber: serial,
+          quantity: 1,
+        ),
+        isA<FulfilmentCommitted<RemoveUnitsResult>>(),
+      );
+      expect(
+        await reserve(app, orderId: 'ORD-2'),
+        isA<FulfilmentCommitted<ReserveResult>>(),
+      );
+      expect(
+        await app.clearOrder('ORD-2'),
+        isA<FulfilmentCommitted<ClearOrderResult>>(),
+      );
+      expect(
+        await reserve(app, quantity: 2),
+        isA<FulfilmentCommitted<ReserveResult>>(),
+      );
+      expect(
+        await app.issueOrder('ORD-1'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      expect(
+        await app.cancelIssuance('ORD-1'),
+        isA<FulfilmentCommitted<CancelIssuanceResult>>(),
+      );
+      expect(
+        await app.issueOrder('ORD-1'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      expect(
+        await app.commitCumulativeExport(now: _exportClock),
+        isA<FulfilmentExported>(),
+      );
+
+      expect(log.notices, [
+        ('1', fingerprint),
+        ('2', fingerprint),
+        ('3', fingerprint),
+        ('4', fingerprint),
+        ('5', fingerprint),
+        ('6', fingerprint),
+        ('7', fingerprint),
+        ('8', fingerprint),
+        ('9', fingerprint),
+        ('10', fingerprint),
+      ]);
+      expect(log.sawStoredExport, isTrue);
+      expect(app.lastExport, isNotNull);
+    });
+
+    test('dataset replacement notifies the new fingerprint', () async {
+      final log = _CommitLog();
+      expect(
+        await log.app.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+      final next = catalogue(storeName: 'Інший магазин', dbName: 'Store_02-B');
+
+      final replaced = await log.app.replaceDataset(next);
+
+      expect(replaced, isA<FulfilmentReplaced>());
+      expect(log.notices, [
+        ('1', DatasetFingerprint.of(datasetBytes())),
+        ('2', DatasetFingerprint.of(next)),
+      ]);
+    });
+
+    test('a revision conflict does not notify', () async {
+      final repository = MemoryFulfilmentRepository();
+      final writer = FulfilmentApplication(repository: repository);
+      expect(
+        await writer.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+      final stale = _CommitLog(repository: repository);
+      expect(await stale.app.load(), isA<LoadReady>());
+      expect(await reserve(writer), isA<FulfilmentCommitted<ReserveResult>>());
+
+      final conflict = await reserve(stale.app);
+
+      expect(conflict, isA<FulfilmentBlocked<ReserveResult>>());
+      expect(stale.app.block, PersistenceBlock.revisionConflict);
+      expect(stale.notices, isEmpty);
+    });
+
+    test('storage failure does not notify', () async {
+      final log = _CommitLog();
+      expect(
+        await log.app.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+      log.repository.failNextCommit();
+
+      final failed = await reserve(log.app);
+
+      expect(failed, isA<FulfilmentBlocked<ReserveResult>>());
+      expect(log.app.block, PersistenceBlock.storageFailed);
+      expect(log.notices, hasLength(1));
+    });
+
+    test('domain rejection does not notify', () async {
+      final log = _CommitLog();
+      expect(
+        await log.app.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+
+      final rejected = await log.app.reserve(
+        orderId: 'missing',
+        productId: productId,
+        address: address,
+        serialNumber: serial,
+        quantity: 1,
+      );
+
+      expect(rejected, isA<FulfilmentDomainRejected<ReserveResult>>());
+      expect(log.app.block, isNull);
+      expect(log.notices, hasLength(1));
+    });
+
+    test('a no-op clear does not notify', () async {
+      final log = _CommitLog();
+      expect(
+        await log.app.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+
+      final cleared = await log.app.clearOrder('ORD-1');
+
+      expect(cleared, isA<FulfilmentUnchanged<ClearOrderResult>>());
+      expect(log.notices, hasLength(1));
+    });
+
+    test('an unchanged cumulative export does not notify', () async {
+      final log = _CommitLog();
+      expect(
+        await log.app.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+      await _issue(log.app, 'ORD-1', quantity: 2);
+      expect(
+        await log.app.commitCumulativeExport(now: _exportClock),
+        isA<FulfilmentExported>(),
+      );
+      final afterExport = log.notices.length;
+
+      final unchanged = await log.app.commitCumulativeExport(now: _exportClock);
+
+      expect(unchanged, isA<FulfilmentExportUnchanged>());
+      expect(log.notices, hasLength(afterExport));
+    });
+
+    test('load and reload do not notify', () async {
+      final log = _CommitLog();
+      expect(
+        await log.app.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+      expect(await log.app.reload(), isA<LoadReady>());
+      expect(log.notices, hasLength(1));
+
+      final loaded = _CommitLog(repository: log.repository);
+      expect(await loaded.app.load(), isA<LoadReady>());
+      expect(loaded.notices, isEmpty);
+    });
+
+    test('sharing a stored export does not notify', () async {
+      final log = _CommitLog();
+      expect(
+        await log.app.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+      await _issue(log.app, 'ORD-1', quantity: 2);
+      expect(
+        await log.app.commitCumulativeExport(now: _exportClock),
+        isA<FulfilmentExported>(),
+      );
+      final afterExport = log.notices.length;
+      var shared = 0;
+      final share = CumulativeExportShare(
+        shareJson: ({required String filename, required Uint8List bytes}) {
+          shared++;
+          return Future<ExportShareResult>.value(const ExportShareHandedOff());
+        },
+      );
+
+      final result = await share.share(log.app.lastExport);
+
+      expect(result, isA<ExportShareHandedOff>());
+      expect(shared, 1);
+      expect(log.notices, hasLength(afterExport));
+      expect(log.app.revision, afterExport);
+    });
+
+    test('blocked commands do not notify', () async {
+      final log = _CommitLog();
+      expect(
+        await log.app.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+      log.repository.failNextCommit();
+      expect(await reserve(log.app), isA<FulfilmentBlocked<ReserveResult>>());
+
+      final blocked = await reserve(log.app);
+
+      expect(blocked, isA<FulfilmentBlocked<ReserveResult>>());
+      expect(log.app.block, PersistenceBlock.storageFailed);
+      expect(log.notices, hasLength(1));
+      expect(log.repository.commitAttempts, 2);
+    });
+
+    test('a callback exception leaves the commit successful', () async {
+      var calls = 0;
+      final notices = <(String, String)>[];
+      final fingerprint = DatasetFingerprint.of(datasetBytes());
+      final app = FulfilmentApplication(
+        repository: MemoryFulfilmentRepository(),
+        onCommitted: (revision, fingerprint) {
+          calls++;
+          if (calls == 1) throw StateError('notify failed');
+          notices.add((revision, fingerprint));
+        },
+      );
+
+      final importedResult = await app.importDataset(datasetBytes());
+
+      expect(importedResult, isA<FulfilmentImported>());
+      expect(app.revision, 1);
+      expect(app.fingerprint, fingerprint);
+      expect(app.block, isNull);
+      expect(app.canMutate, isTrue);
+      expect(notices, isEmpty);
+
+      final reserved = await reserve(app);
+
+      expect(reserved, isA<FulfilmentCommitted<ReserveResult>>());
+      expect(app.revision, 2);
+      expect(app.block, isNull);
+      expect(notices, [('2', fingerprint)]);
+    });
+  });
 }
 
 Uint8List datasetBytes() => Uint8List.fromList(utf8.encode(_dataset));
@@ -1702,6 +1962,32 @@ Future<PersistedFulfilment> persisted(
   final result = await repository.load();
   expect(result, isA<LoadReady>());
   return (result as LoadReady).state;
+}
+
+/// Records [FulfilmentApplication.onCommitted] and checks that the instance
+/// already holds the notified revision and fingerprint.
+final class _CommitLog {
+  _CommitLog({MemoryFulfilmentRepository? repository})
+    : repository = repository ?? MemoryFulfilmentRepository() {
+    app = FulfilmentApplication(
+      repository: this.repository,
+      onCommitted: (revision, fingerprint) {
+        expect(app.revision.toString(), revision);
+        expect(app.fingerprint, fingerprint);
+        expect(app.session, isNotNull);
+        if (app.lastExport != null) {
+          expect(app.session!.statusOf('ORD-1'), OrderStatus.exported);
+          sawStoredExport = true;
+        }
+        notices.add((revision, fingerprint));
+      },
+    );
+  }
+
+  final MemoryFulfilmentRepository repository;
+  late final FulfilmentApplication app;
+  final List<(String, String)> notices = [];
+  bool sawStoredExport = false;
 }
 
 SessionSnapshot emptySnapshot(Uint8List bytes) {

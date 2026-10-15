@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retail_offline/application/fulfilment_application.dart';
 import 'package:retail_offline/application/fulfilment_tab_coordinator.dart';
+import 'package:retail_offline/application/page_visibility.dart';
 import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
 import 'package:retail_offline/persistence/browser/storage_change_notice.dart';
 import 'package:retail_offline/persistence/dataset_fingerprint.dart';
@@ -612,6 +613,271 @@ void main() {
       expect(repo.commitAttempts, attempts);
     });
   });
+
+  group('FulfilmentTabCoordinator page resume', () {
+    test('a resume reloads without a notice', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final before = opened.transport.notices.length;
+      final hold = _LoadHold();
+      repo.nextHold = hold;
+
+      opened.visibility.resume();
+      await hold.entered.future;
+
+      expect(repo.loads, 1);
+      hold.release.complete();
+      await _turns(4);
+      expect(repo.loads, 1);
+      expect(opened.application.revision, 1);
+      expect(opened.transport.notices, hasLength(before));
+      expect(repo.commitAttempts, 1);
+    });
+
+    test('a hidden visibility change does not reload', () async {
+      expect(resumesWhenVisible('hidden'), isFalse);
+      expect(resumesWhenVisible('prerender'), isFalse);
+      expect(resumesWhenVisible('visible'), isTrue);
+
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      await _turns(4);
+
+      expect(opened.visibility.listened, isTrue);
+      expect(repo.loads, 0);
+    });
+
+    test('the initial visible state does not reload', () async {
+      expect(resumesWhenRestored(false), isFalse);
+      expect(resumesWhenRestored(true), isTrue);
+
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      expect(opened.visibility.listened, isTrue);
+      await _turns(4);
+
+      expect(repo.loads, 0);
+      expect(opened.application.revision, 1);
+    });
+
+    test('two resumes before the load starts are one reload', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final hold = _LoadHold();
+      repo.nextHold = hold;
+
+      opened.visibility.resume();
+      opened.visibility.resume();
+      await hold.entered.future;
+
+      expect(repo.loads, 1);
+      hold.release.complete();
+      await _turns(4);
+      expect(repo.loads, 1);
+    });
+
+    test('a resume during a reload schedules one follow-up', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final first = _LoadHold();
+      repo.nextHold = first;
+      opened.visibility.resume();
+      await first.entered.future;
+
+      final second = _LoadHold();
+      repo.nextHold = second;
+      opened.visibility.resume();
+      opened.visibility.resume();
+      first.release.complete();
+      await second.entered.future;
+
+      expect(repo.loads, 2);
+      second.release.complete();
+      await _turns(4);
+      expect(repo.loads, 2);
+    });
+
+    test('a resume during the follow-up is not lost', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final first = _LoadHold();
+      repo.nextHold = first;
+      opened.visibility.resume();
+      await first.entered.future;
+
+      final second = _LoadHold();
+      repo.nextHold = second;
+      opened.visibility.resume();
+      first.release.complete();
+      await second.entered.future;
+
+      final third = _LoadHold();
+      repo.nextHold = third;
+      opened.visibility.resume();
+      second.release.complete();
+      await third.entered.future;
+
+      expect(repo.loads, 3);
+      third.release.complete();
+      await _turns(4);
+      expect(repo.loads, 3);
+    });
+
+    test('a resume bypasses an unresolved revision', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final hold = _LoadHold();
+      repo.nextHold = hold;
+      opened.transport.deliver(_remote('9', opened.fingerprint));
+      await hold.entered.future;
+      hold.release.complete();
+      await _turns(4);
+      expect(repo.loads, 1);
+
+      opened.transport.deliver(_remote('9', opened.fingerprint));
+      await _turns(4);
+      expect(repo.loads, 1);
+
+      final resume = _LoadHold();
+      repo.nextHold = resume;
+      opened.visibility.resume();
+      await resume.entered.future;
+      expect(repo.loads, 2);
+      resume.release.complete();
+      await _turns(4);
+
+      opened.transport.deliver(_remote('9', opened.fingerprint));
+      await _turns(4);
+      expect(repo.loads, 2);
+      expect(opened.application.revision, 1);
+    });
+
+    test('a resume bypasses a fingerprint mismatch check', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      opened.transport.deliver(_remote('1', _otherFingerprint));
+      await _turns(4);
+      expect(repo.loads, 1);
+      opened.transport.deliver(_remote('1', _otherFingerprint));
+      await _turns(4);
+      expect(repo.loads, 1);
+
+      final resume = _LoadHold();
+      repo.nextHold = resume;
+      opened.visibility.resume();
+      await resume.entered.future;
+      expect(repo.loads, 2);
+      resume.release.complete();
+      await _turns(4);
+
+      opened.transport.deliver(_remote('1', _otherFingerprint));
+      await _turns(4);
+      expect(repo.loads, 2);
+      expect(opened.application.fingerprint, opened.fingerprint);
+    });
+
+    test(
+      'a resume during a local command waits and does not retry it',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        final commit = repo.holdNextCommit();
+        final reserving = reserve(opened.application);
+        await commit.started;
+        final load = _LoadHold();
+        repo.nextHold = load;
+
+        opened.visibility.resume();
+        commit.release();
+        final reserved = await reserving;
+
+        expect(reserved, isA<FulfilmentCommitted<ReserveResult>>());
+        final attempts = repo.commitAttempts;
+        await load.entered.future;
+        expect(repo.loads, 1);
+        expect(repo.commitAttempts, attempts);
+        load.release.complete();
+        await _turns(4);
+        expect(opened.application.revision, 2);
+        expect(repo.commitAttempts, attempts);
+        expect(opened.transport.notices, hasLength(2));
+      },
+    );
+
+    test('close stops resume reloads and closes visibility once', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final hold = _LoadHold();
+      repo.nextHold = hold;
+      opened.visibility.resume();
+      await hold.entered.future;
+      opened.visibility.resume();
+
+      opened.coordinator.close();
+      opened.coordinator.close();
+      hold.release.complete();
+      await _turns(4);
+
+      expect(repo.loads, 1);
+      expect(opened.visibility.closeCount, 1);
+      expect(opened.transport.closeCount, 1);
+      opened.visibility.resume();
+      await _turns(4);
+      expect(repo.loads, 1);
+      expect(opened.coordinator.isClosed, isTrue);
+    });
+
+    test('a throwing visibility close stays closed', () async {
+      final visibility = _FakePageVisibility(throwOnClose: true);
+      final repo = _LoadGateRepository();
+      final opened = _Opened(
+        senderId: _senderId,
+        repository: repo,
+        visibility: visibility,
+      );
+      expect(
+        await opened.application.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+
+      expect(opened.coordinator.close, returnsNormally);
+      opened.coordinator.close();
+
+      expect(opened.coordinator.isClosed, isTrue);
+      expect(visibility.closeCount, 1);
+      expect(opened.transport.closeCount, 1);
+      visibility.resume();
+      await _turns(4);
+      expect(repo.loads, 0);
+      await expectLater(
+        opened.coordinator.reload(),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test(
+      'a notice and an explicit reload still run with visibility attached',
+      () async {
+        final repo = _LoadGateRepository();
+        final opened = await _imported(repo);
+        final hold = _LoadHold();
+        repo.nextHold = hold;
+
+        opened.transport.deliver(_remote('2', opened.fingerprint));
+        await hold.entered.future;
+        expect(repo.loads, 1);
+        hold.release.complete();
+        await _turns(4);
+        expect(repo.loads, 1);
+
+        final result = await opened.coordinator.reload();
+        expect(result, isA<LoadReady>());
+        expect((result as LoadReady).state.revision, 1);
+        expect(repo.loads, 2);
+        expect(opened.transport.notices, hasLength(1));
+      },
+    );
+  });
 }
 
 const _senderId = '0123456789abcdef0123456789abcdef';
@@ -690,27 +956,64 @@ final class _Opened {
     bool throwOnClose = false,
     String? senderId,
     MemoryFulfilmentRepository? repository,
+    _FakePageVisibility? visibility,
   }) : transport = _RecordingTransport(
          available: available,
          throwOnPublish: throwOnPublish,
          throwOnClose: throwOnClose,
        ),
-       repository = repository ?? MemoryFulfilmentRepository() {
+       repository = repository ?? MemoryFulfilmentRepository(),
+       visibility = visibility ?? _FakePageVisibility() {
     coordinator = FulfilmentTabCoordinator.open(
       repository: this.repository,
       databaseName: 'retail-offline-test',
       transport: transport,
+      visibility: this.visibility,
       senderId: senderId,
     );
   }
 
   final MemoryFulfilmentRepository repository;
   final _RecordingTransport transport;
+  final _FakePageVisibility visibility;
   late final FulfilmentTabCoordinator coordinator;
   late String fingerprint;
   late String sender;
 
   FulfilmentApplication get application => coordinator.application;
+}
+
+final class _FakePageVisibility implements PageVisibility {
+  _FakePageVisibility({this.throwOnClose = false});
+
+  final bool throwOnClose;
+  var closeCount = 0;
+  var listened = false;
+  var _closed = false;
+  void Function()? _onResume;
+
+  @override
+  bool get isAvailable => !_closed;
+
+  @override
+  void listen(void Function() onResume) {
+    if (_closed) return;
+    listened = true;
+    _onResume = onResume;
+  }
+
+  void resume() {
+    final listener = _onResume;
+    if (listener != null) listener();
+  }
+
+  @override
+  void close() {
+    closeCount++;
+    _closed = true;
+    _onResume = null;
+    if (throwOnClose) throw StateError('visibility close failed');
+  }
 }
 
 final class _RecordingTransport implements StorageChangeTransport {

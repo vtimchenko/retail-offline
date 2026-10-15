@@ -6,6 +6,7 @@ import '../persistence/dataset_fingerprint.dart';
 import '../persistence/fulfilment_repository.dart';
 import '../services/json/cumulative_json_export.dart';
 import 'fulfilment_application.dart';
+import 'page_visibility.dart';
 
 final RegExp _senderIdPattern = RegExp(r'^[0-9a-z][0-9a-z-]*$');
 
@@ -57,24 +58,30 @@ final class ChannelStorageChangeTransport implements StorageChangeTransport {
 }
 
 /// Publishes a [StorageChangeNotice] after each successful local commit and
-/// reloads [application] when a remote notice says storage may be ahead.
+/// reloads [application] when a remote notice or a page resume says storage
+/// should be read again.
 ///
-/// The coordinator owns the transport and the sender id. [application] owns
-/// the session. A notice is not copied into the session. A failed command is
-/// not run again.
+/// The coordinator owns the transport, the page listener, and the sender id.
+/// [application] owns the session. A notice is not copied into the session.
+/// A resume is not a revision. A failed command is not run again.
 final class FulfilmentTabCoordinator {
   /// Creates [application] and connects its commit hook to this coordinator.
   ///
   /// [databaseName] is the IndexedDB name, and it is the name passed to
-  /// [StorageChangeChannel] when [transport] is omitted. [senderId] replaces
-  /// the generated id in tests. An id that [StorageChangeNotice] would
-  /// reject throws [ArgumentError] before the application is created.
+  /// [StorageChangeChannel] when [transport] is omitted. [visibility]
+  /// replaces [BrowserPageVisibility] in tests. [senderId] replaces the
+  /// generated id in tests. An id that [StorageChangeNotice] would reject
+  /// throws [ArgumentError] before the application is created.
+  ///
+  /// The notice and resume listeners are registered after this coordinator
+  /// exists. Registration does not read storage.
   factory FulfilmentTabCoordinator.open({
     required FulfilmentRepository repository,
     required String databaseName,
     DatasetByteRestore? datasets,
     CumulativeJsonExport? exports,
     StorageChangeTransport? transport,
+    PageVisibility? visibility,
     String? senderId,
   }) {
     final id = senderId ?? _generateSenderId(Random.secure());
@@ -84,6 +91,7 @@ final class FulfilmentTabCoordinator {
         ChannelStorageChangeTransport(
           StorageChangeChannel(databaseName: databaseName),
         );
+    final PageVisibility pages = visibility ?? BrowserPageVisibility();
     late FulfilmentTabCoordinator coordinator;
     final application = FulfilmentApplication(
       repository: repository,
@@ -96,15 +104,18 @@ final class FulfilmentTabCoordinator {
     coordinator = FulfilmentTabCoordinator._(
       application: application,
       transport: storage,
+      visibility: pages,
       senderId: id,
     );
     storage.listen(coordinator._onRemote);
+    pages.listen(coordinator._onResume);
     return coordinator;
   }
 
   FulfilmentTabCoordinator._({
     required this.application,
     required this._transport,
+    required this._visibility,
     required this.senderId,
   });
 
@@ -118,10 +129,12 @@ final class FulfilmentTabCoordinator {
   final String senderId;
 
   final StorageChangeTransport _transport;
+  final PageVisibility _visibility;
   var _closed = false;
   var _active = false;
   var _startScheduled = false;
   var _pending = false;
+  var _resume = false;
   var _nextId = 0;
   int? _inflightId;
   StorageChangeNotice? _target;
@@ -154,22 +167,28 @@ final class FulfilmentTabCoordinator {
     return completer.future;
   }
 
-  /// Closes the transport and refuses later reloads.
+  /// Closes the transport and the page listener, and refuses later reloads.
   ///
   /// A second call does nothing. The application and its repository stay
   /// open. An in-flight [reload] is allowed to finish, and no follow-up
-  /// starts. A throw from the transport is ignored; this coordinator is
+  /// starts. A throw from either close is ignored; this coordinator is
   /// already closed.
   void close() {
     if (_closed) return;
     _closed = true;
     _pending = false;
+    _resume = false;
     _target = null;
     _queuedNotice = null;
     try {
       _transport.close();
     } on Object {
       // Later commits and notices are already ignored.
+    }
+    try {
+      _visibility.close();
+    } on Object {
+      // Later resume events are already ignored.
     }
     _rejectUnstarted(_closedError());
   }
@@ -201,6 +220,20 @@ final class FulfilmentTabCoordinator {
     _schedule();
   }
 
+  /// Asks for one storage read.
+  ///
+  /// A resume is not a [StorageChangeNotice], so the revision dampers do not
+  /// apply. Repeated calls before the same read starts stay one read.
+  void _onResume() {
+    if (_closed) return;
+    _resume = true;
+    if (_active) {
+      _pending = true;
+      return;
+    }
+    _schedule();
+  }
+
   /// Whether [notice] is newer than memory, or an unchecked fingerprint
   /// mismatch at the same revision.
   bool _accepts(StorageChangeNotice notice) {
@@ -226,7 +259,7 @@ final class FulfilmentTabCoordinator {
   void _startDrain() {
     _startScheduled = false;
     if (_closed || _active) return;
-    if (_target == null && _waiters.isEmpty) return;
+    if (_target == null && _waiters.isEmpty && !_resume) return;
     _active = true;
     unawaited(_drain());
   }
@@ -237,6 +270,7 @@ final class FulfilmentTabCoordinator {
         _pending = false;
         final trigger = _target;
         _target = null;
+        _resume = false;
         final startId = _nextId++;
         _inflightId = startId;
         final LoadResult result;
@@ -266,12 +300,13 @@ final class FulfilmentTabCoordinator {
           _queuedNotice = null;
           _pending = true;
         }
+        if (_resume) _pending = true;
         if (!_pending) return;
       }
     } finally {
       _active = false;
       _inflightId = null;
-      if (!_closed && (_waiters.isNotEmpty || _target != null)) {
+      if (!_closed && (_waiters.isNotEmpty || _target != null || _resume)) {
         _schedule();
       }
     }

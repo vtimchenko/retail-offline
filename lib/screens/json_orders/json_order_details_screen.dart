@@ -9,6 +9,7 @@ import '../../domain/fulfilment/fulfilment_session.dart';
 import '../../models/retail_dataset.dart';
 import '../../widgets/status_message.dart';
 import '../json_import/fulfilment_block_message.dart';
+import 'json_serial_selection_screen.dart';
 
 /// Read-only details for one order in the current JSON session.
 ///
@@ -81,6 +82,27 @@ Future<void> _retry(BuildContext context) async {
   } on Object {
     // operationError is already recorded. The blocked view explains it.
   }
+}
+
+/// Opens serial selection for a stock line.
+///
+/// A service line stays on this screen. Issued and exported orders still
+/// open, and that screen keeps their reservations read-only.
+VoidCallback? _openSerial(
+  BuildContext context,
+  String orderId,
+  DatasetGood good,
+) {
+  if (good.isServiceGood) return null;
+  final productId = good.productId.literal;
+  return () {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            JsonSerialSelectionScreen(orderId: orderId, productId: productId),
+      ),
+    );
+  };
 }
 
 DatasetOrder? _orderById(FulfilmentSession session, String orderId) {
@@ -305,6 +327,11 @@ class _OrderBody extends StatelessWidget {
                                   order.orderId,
                                   good,
                                 ),
+                                onOpen: _openSerial(
+                                  context,
+                                  order.orderId,
+                                  good,
+                                ),
                               )
                             : Padding(
                                 key: ValueKey(
@@ -315,6 +342,11 @@ class _OrderBody extends StatelessWidget {
                                   good: good,
                                   progress: _lineProgress(
                                     session,
+                                    order.orderId,
+                                    good,
+                                  ),
+                                  onOpen: _openSerial(
+                                    context,
                                     order.orderId,
                                     good,
                                   ),
@@ -465,15 +497,21 @@ class _GoodsHeader extends StatelessWidget {
 }
 
 class _GoodRow extends StatelessWidget {
-  const _GoodRow({super.key, required this.good, required this.progress});
+  const _GoodRow({
+    super.key,
+    required this.good,
+    required this.progress,
+    required this.onOpen,
+  });
 
   final DatasetGood good;
   final _LineProgress progress;
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
     final style = Theme.of(context).textTheme.bodyMedium;
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: _GoodColumns(
         product: _GoodFacts(good: good, progress: progress),
@@ -494,44 +532,62 @@ class _GoodRow extends StatelessWidget {
         ),
       ),
     );
+    final open = onOpen;
+    if (open == null) return row;
+    return InkWell(
+      key: ValueKey('json-good-open-${good.productId.literal}'),
+      onTap: open,
+      child: row,
+    );
   }
 }
 
 class _GoodCard extends StatelessWidget {
-  const _GoodCard({required this.good, required this.progress});
+  const _GoodCard({
+    required this.good,
+    required this.progress,
+    required this.onOpen,
+  });
 
   final DatasetGood good;
   final _LineProgress progress;
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _GoodFacts(good: good, progress: progress),
-            _DetailField(
-              AppStrings.quantityLabel,
-              '${good.quantity}',
-              valueKey: ValueKey(
-                'json-good-quantity-${good.productId.literal}',
-              ),
-            ),
-            _DetailField(
-              AppStrings.priceLabel,
-              DisplayFormat.formatMoney(good.priceMinorUnits),
-              valueKey: ValueKey('json-good-price-${good.productId.literal}'),
-            ),
-            _DetailField(
-              AppStrings.amountLabel,
-              DisplayFormat.formatMoney(good.amountMinorUnits),
-              valueKey: ValueKey('json-good-amount-${good.productId.literal}'),
-            ),
-          ],
-        ),
+    final body = Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _GoodFacts(good: good, progress: progress),
+          _DetailField(
+            AppStrings.quantityLabel,
+            '${good.quantity}',
+            valueKey: ValueKey('json-good-quantity-${good.productId.literal}'),
+          ),
+          _DetailField(
+            AppStrings.priceLabel,
+            DisplayFormat.formatMoney(good.priceMinorUnits),
+            valueKey: ValueKey('json-good-price-${good.productId.literal}'),
+          ),
+          _DetailField(
+            AppStrings.amountLabel,
+            DisplayFormat.formatMoney(good.amountMinorUnits),
+            valueKey: ValueKey('json-good-amount-${good.productId.literal}'),
+          ),
+        ],
       ),
+    );
+    final open = onOpen;
+    return Card(
+      child: open == null
+          ? body
+          : InkWell(
+              key: ValueKey('json-good-open-${good.productId.literal}'),
+              onTap: open,
+              child: body,
+            ),
     );
   }
 }

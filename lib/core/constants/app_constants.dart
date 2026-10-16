@@ -136,6 +136,24 @@ abstract final class AppStrings {
   static const String jsonOrderNotFoundMessage =
       'Цього замовлення немає в поточних даних.';
   static const String jsonBackToOrders = 'До списку замовлень';
+  static const String jsonGoodNotFoundTitle = 'Товар не знайдено';
+  static const String jsonGoodNotFoundMessage =
+      'Цього товару немає в поточному замовленні.';
+  static const String remainingQuantityLabel = 'Залишилось';
+  static const String jsonSerialInsufficientStock = 'Цього залишку вже немає.';
+  static const String jsonSerialLineComplete =
+      'Для цього товару вже обрано потрібну кількість.';
+  static const String jsonSerialInvalidQuantity = 'Некоректна кількість.';
+  static const String jsonSerialUnknownStock =
+      'Цього залишку немає в поточних даних.';
+  static const String jsonSerialServiceLine =
+      'Послуга не потребує вибору серійного номера.';
+  static const String jsonSerialParcelMismatch =
+      'Для посилки можна обрати лише серійний номер її ТТН.';
+  static const String jsonSerialOrderLocked =
+      'Замовлення вже видано або експортовано. Змінити вибір не можна.';
+  static const String jsonSerialInsufficientReserved =
+      'Обраної кількості на цій адресі вже немає.';
 
   // ---- Serial selection ----
   static const String completeService = 'Завершити обслуговування';

@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../application/fulfilment_application.dart';
 import '../../application/fulfilment_scope.dart';
 import '../../application/fulfilment_ui_controller.dart';
 import '../../core/constants/app_constants.dart';
@@ -11,12 +14,17 @@ import '../../widgets/status_message.dart';
 import '../json_import/fulfilment_block_message.dart';
 import 'json_serial_selection_screen.dart';
 
-/// Read-only details for one order in the current JSON session.
+/// Details and issuance for one order in the current JSON session.
 ///
 /// [orderId] is the only value this screen keeps. Each build reads
 /// [FulfilmentScope], resolves that id on the current [FulfilmentSession],
 /// and drops the previous order when the id is gone. Money is shown from
 /// the stored minor units.
+///
+/// **Завершити обслуговування** calls [FulfilmentUiController.issueOrder]
+/// when [FulfilmentSession.statusOf] is [OrderStatus.readyForIssue]. The
+/// status badge shows the session installed after [FulfilmentCommitted].
+/// Export stays a separate command.
 class JsonOrderDetailsScreen extends StatelessWidget {
   /// Creates details that resolve [orderId] from the ambient session.
   const JsonOrderDetailsScreen({super.key, required this.orderId});
@@ -82,6 +90,64 @@ Future<void> _retry(BuildContext context) async {
   } on Object {
     // operationError is already recorded. The blocked view explains it.
   }
+}
+
+/// Issues [orderId] when the current session still reports it ready.
+///
+/// The status check is [FulfilmentSession.statusOf]. This does not reserve
+/// stock, export the order, or apply [OrderIssued.session] locally.
+Future<void> _issue(BuildContext context, String orderId) async {
+  final controller = FulfilmentScope.read(context);
+  if (!_canIssue(controller, controller.session, orderId)) return;
+  try {
+    final result = await controller.issueOrder(orderId);
+    if (!context.mounted) return;
+    _acceptIssue(context, result);
+  } on Object {
+    // operationError is already recorded. The blocked view explains it.
+  }
+}
+
+/// Names every issuance result and leaves the controller session in place.
+///
+/// [FulfilmentScope] has already rebuilt from that session. A blocked result
+/// observed after a reload restored [FulfilmentUiPhase.ready] does not paint
+/// a second conflict message.
+void _acceptIssue(
+  BuildContext context,
+  FulfilmentCommandResult<IssueOrderResult>? result,
+) {
+  final phase = FulfilmentScope.read(context).phase;
+  switch (result) {
+    case null:
+    case FulfilmentNotReady<IssueOrderResult>():
+    case FulfilmentUnchanged<IssueOrderResult>():
+    case FulfilmentDomainRejected<IssueOrderResult>():
+    case FulfilmentCommitted<IssueOrderResult>():
+      return;
+    case FulfilmentBlocked<IssueOrderResult>()
+        when phase == FulfilmentUiPhase.ready:
+      return;
+    case FulfilmentBlocked<IssueOrderResult>():
+      return;
+  }
+}
+
+/// Whether [orderId] may be sent to [FulfilmentUiController.issueOrder].
+///
+/// Readiness is [FulfilmentSession.statusOf]. This does not count reserved
+/// units again.
+bool _canIssue(
+  FulfilmentUiController controller,
+  FulfilmentSession? session,
+  String orderId,
+) {
+  if (session == null) return false;
+  return controller.phase == FulfilmentUiPhase.ready &&
+      controller.canMutate &&
+      !controller.commandInFlight &&
+      !controller.refreshInFlight &&
+      session.statusOf(orderId) == OrderStatus.readyForIssue;
 }
 
 /// Opens serial selection for a stock line.
@@ -294,64 +360,76 @@ class _OrderBody extends StatelessWidget {
             width: width,
             height: constraints.maxHeight,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               child: LayoutBuilder(
                 builder: (context, content) {
                   final wide =
                       content.maxWidth >= AppConstants.wideLayoutBreakpoint;
-                  return ListView(
-                    key: const Key('json-order-details'),
-                    padding: const EdgeInsets.only(bottom: 16),
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _OrderInfoCard(session: session, order: order),
-                      const SizedBox(height: 20),
-                      Text(
-                        AppStrings.orderItemsTitle,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                      Expanded(
+                        child: ListView(
+                          key: const Key('json-order-details'),
+                          children: [
+                            _OrderInfoCard(session: session, order: order),
+                            const SizedBox(height: 20),
+                            Text(
+                              AppStrings.orderItemsTitle,
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 12),
+                            if (wide) ...[
+                              const _GoodsHeader(
+                                key: Key('json-goods-table-header'),
+                              ),
+                              const Divider(height: 1, color: AppColors.border),
+                            ],
+                            for (final good in order.goods)
+                              wide
+                                  ? _GoodRow(
+                                      key: ValueKey(
+                                        'json-good-${good.productId.literal}',
+                                      ),
+                                      good: good,
+                                      progress: _lineProgress(
+                                        session,
+                                        order.orderId,
+                                        good,
+                                      ),
+                                      onOpen: _openSerial(
+                                        context,
+                                        order.orderId,
+                                        good,
+                                      ),
+                                    )
+                                  : Padding(
+                                      key: ValueKey(
+                                        'json-good-${good.productId.literal}',
+                                      ),
+                                      padding: const EdgeInsets.only(
+                                        bottom: 12,
+                                      ),
+                                      child: _GoodCard(
+                                        good: good,
+                                        progress: _lineProgress(
+                                          session,
+                                          order.orderId,
+                                          good,
+                                        ),
+                                        onOpen: _openSerial(
+                                          context,
+                                          order.orderId,
+                                          good,
+                                        ),
+                                      ),
+                                    ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 12),
-                      if (wide) ...[
-                        const _GoodsHeader(key: Key('json-goods-table-header')),
-                        const Divider(height: 1, color: AppColors.border),
-                      ],
-                      for (final good in order.goods)
-                        wide
-                            ? _GoodRow(
-                                key: ValueKey(
-                                  'json-good-${good.productId.literal}',
-                                ),
-                                good: good,
-                                progress: _lineProgress(
-                                  session,
-                                  order.orderId,
-                                  good,
-                                ),
-                                onOpen: _openSerial(
-                                  context,
-                                  order.orderId,
-                                  good,
-                                ),
-                              )
-                            : Padding(
-                                key: ValueKey(
-                                  'json-good-${good.productId.literal}',
-                                ),
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: _GoodCard(
-                                  good: good,
-                                  progress: _lineProgress(
-                                    session,
-                                    order.orderId,
-                                    good,
-                                  ),
-                                  onOpen: _openSerial(
-                                    context,
-                                    order.orderId,
-                                    good,
-                                  ),
-                                ),
-                              ),
+                      _CompleteServiceButton(orderId: order.orderId),
                     ],
                   );
                 },
@@ -360,6 +438,30 @@ class _OrderBody extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _CompleteServiceButton extends StatelessWidget {
+  const _CompleteServiceButton({required this.orderId});
+
+  final String orderId;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = FulfilmentScope.of(context);
+    final busy = controller.commandInFlight;
+    final enabled = _canIssue(controller, controller.session, orderId);
+    return FilledButton(
+      key: const Key('json-complete-service'),
+      onPressed: enabled ? () => unawaited(_issue(context, orderId)) : null,
+      child: busy
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Text(AppStrings.completeService, textAlign: TextAlign.center),
     );
   }
 }

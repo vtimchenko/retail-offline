@@ -9,6 +9,7 @@ import 'package:retail_offline/application/fulfilment_scope.dart';
 import 'package:retail_offline/application/fulfilment_tab_coordinator.dart';
 import 'package:retail_offline/application/fulfilment_ui_controller.dart';
 import 'package:retail_offline/application/page_visibility.dart';
+import 'package:retail_offline/core/constants/app_constants.dart';
 import 'package:retail_offline/core/theme/app_colors.dart';
 import 'package:retail_offline/core/theme/app_theme.dart';
 import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
@@ -66,7 +67,9 @@ void main() {
       expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
       expect(find.byType(OrderDetailsScreen), findsNothing);
       expect(find.byType(SerialSelectionScreen), findsNothing);
-      expect(find.text('Завершити обслуговування'), findsNothing);
+      expect(find.byKey(const Key('json-complete-service')), findsOneWidget);
+      expect(find.text('Завершити обслуговування'), findsOneWidget);
+      expect(_issueEnabled(tester), isFalse);
       expect(find.text('Поширити файл'), findsNothing);
       expect(find.text('Додати'), findsNothing);
       expect(find.text('Прибрати'), findsNothing);
@@ -775,11 +778,528 @@ void main() {
       expect(find.text('Тестовий Клієнт А'), findsNothing);
       expect(find.text(_largeOrderNumber), findsNothing);
       expect(find.byKey(const Key('json-order-details')), findsNothing);
+      expect(find.byKey(const Key('json-complete-service')), findsNothing);
+      expect(find.text('Завершити обслуговування'), findsNothing);
 
       await tester.tap(find.byKey(const Key('json-order-missing-back')));
       await tester.pump();
       expect(tester.takeException(), isNull);
       expect(find.byKey(const Key('json-order-missing')), findsOneWidget);
+    });
+
+    testWidgets('a ready order issues once and keeps its reservations', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, then: _reserveReady);
+      final controller = await _pumpDetails(tester, repository);
+      final revision = controller.revision!;
+      final reserved = controller.session!.lineReservedQuantity(
+        orderId: 'ORD-1',
+        productId: productId,
+      );
+
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.readyForIssue);
+      expect(_onDetails(find.text('Готово до видачі')), findsOneWidget);
+      expect(_issueEnabled(tester), isTrue);
+      expect(reserved, 2);
+
+      final attempts = repository.commitAttempts;
+      final hold = repository.holdNextCommit();
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await tester.pump();
+      await hold.started;
+
+      expect(_onDetails(find.text('Готово до видачі')), findsOneWidget);
+      expect(find.text('Видано'), findsNothing);
+      expect(_issueEnabled(tester), isFalse);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('json-complete-service')),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.readyForIssue);
+      expect(
+        controller.session!.lineReservedQuantity(
+          orderId: 'ORD-1',
+          productId: productId,
+        ),
+        reserved,
+      );
+
+      hold.release();
+      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+
+      expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
+      expect(_onDetails(find.text('Видано')), findsOneWidget);
+      expect(find.text('Готово до видачі'), findsNothing);
+      expect(find.text('Файл Excel успішно сформовано'), findsNothing);
+      expect(find.text('Поширити файл'), findsNothing);
+      expect(_issueEnabled(tester), isFalse);
+      expect(find.text('Завершити обслуговування'), findsOneWidget);
+      expect(controller.revision, revision + 1);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(
+        controller.session!.lineReservedQuantity(
+          orderId: 'ORD-1',
+          productId: productId,
+        ),
+        reserved,
+      );
+      expect(repository.commitAttempts, attempts + 1);
+      expect(tester.takeException(), isNull);
+
+      final stored = FulfilmentApplication(repository: repository);
+      expect(await stored.load(), isA<LoadReady>());
+      expect(stored.revision, revision + 1);
+      expect(stored.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(
+        stored.session!.lineReservedQuantity(
+          orderId: 'ORD-1',
+          productId: productId,
+        ),
+        reserved,
+      );
+    });
+
+    testWidgets('an in-progress order keeps completion disabled', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, then: _reservePartial);
+      await _pumpDetails(tester, repository);
+      final attempts = repository.commitAttempts;
+
+      expect(_onDetails(find.text('В процесі')), findsOneWidget);
+      expect(find.text('Обрано 1 з 2'), findsOneWidget);
+      expect(find.byKey(const Key('json-complete-service')), findsOneWidget);
+      expect(_issueEnabled(tester), isFalse);
+
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await tester.pump();
+
+      expect(repository.commitAttempts, attempts);
+      expect(_onDetails(find.text('В процесі')), findsOneWidget);
+      expect(find.text('Видано'), findsNothing);
+    });
+
+    testWidgets('a service-only order issues without a reservation', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, bytes: _serviceOnlyBytes());
+      final controller = await _pumpDetails(
+        tester,
+        repository,
+        orderId: 'ORD-S',
+      );
+      final revision = controller.revision!;
+      final attempts = repository.commitAttempts;
+
+      expect(controller.session!.statusOf('ORD-S'), OrderStatus.readyForIssue);
+      expect(
+        controller.session!.lineReservedQuantity(
+          orderId: 'ORD-S',
+          productId: _serviceId,
+        ),
+        0,
+      );
+      expect(
+        controller.session!.availableQuantity(
+          productId: productId,
+          address: address,
+          serialNumber: serial,
+        ),
+        5,
+      );
+      expect(find.text('Не потребує вибору'), findsOneWidget);
+      expect(_issueEnabled(tester), isTrue);
+
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+
+      expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
+      expect(controller.revision, revision + 1);
+      expect(controller.session!.statusOf('ORD-S'), OrderStatus.issued);
+      expect(
+        controller.session!.lineReservedQuantity(
+          orderId: 'ORD-S',
+          productId: _serviceId,
+        ),
+        0,
+      );
+      expect(
+        controller.session!.availableQuantity(
+          productId: productId,
+          address: address,
+          serialNumber: serial,
+        ),
+        5,
+      );
+      expect(_issueEnabled(tester), isFalse);
+      expect(repository.commitAttempts, attempts + 1);
+      expect(find.text('Поширити файл'), findsNothing);
+    });
+
+    testWidgets('a parcel order stays disabled until its line is complete', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, bytes: _parcelOrderBytes());
+      final controller = await _pumpDetails(
+        tester,
+        repository,
+        orderId: 'ORD-P',
+      );
+
+      expect(controller.session!.statusOf('ORD-P'), OrderStatus.noSelection);
+      expect(find.text('Обрано 0 з 2'), findsOneWidget);
+      expect(find.text('Посилка'), findsOneWidget);
+      expect(_issueEnabled(tester), isFalse);
+
+      expect(
+        await controller.reserve(
+          orderId: 'ORD-P',
+          productId: _parcelId,
+          address: 'A-02',
+          serialNumber: _parcelTtn,
+          quantity: 1,
+        ),
+        isA<FulfilmentCommitted<ReserveResult>>(),
+      );
+      await tester.pump();
+
+      expect(controller.session!.statusOf('ORD-P'), OrderStatus.inProgress);
+      expect(find.text('Обрано 1 з 2'), findsOneWidget);
+      expect(_issueEnabled(tester), isFalse);
+
+      expect(
+        await controller.reserve(
+          orderId: 'ORD-P',
+          productId: _parcelId,
+          address: 'A-02',
+          serialNumber: _parcelTtn,
+          quantity: 1,
+        ),
+        isA<FulfilmentCommitted<ReserveResult>>(),
+      );
+      await tester.pump();
+
+      expect(controller.session!.statusOf('ORD-P'), OrderStatus.readyForIssue);
+      expect(find.text('Обрано 2 з 2'), findsOneWidget);
+      expect(_issueEnabled(tester), isTrue);
+
+      final reserved = controller.session!.lineReservedQuantity(
+        orderId: 'ORD-P',
+        productId: _parcelId,
+      );
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+
+      expect(controller.session!.statusOf('ORD-P'), OrderStatus.issued);
+      expect(
+        controller.session!.lineReservedQuantity(
+          orderId: 'ORD-P',
+          productId: _parcelId,
+        ),
+        reserved,
+      );
+      expect(_issueEnabled(tester), isFalse);
+    });
+
+    testWidgets('an issued order does not commit again', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, then: _issueOrd1);
+      final controller = await _pumpDetails(tester, repository);
+      final attempts = repository.commitAttempts;
+      final revision = controller.revision;
+
+      expect(_onDetails(find.text('Видано')), findsOneWidget);
+      expect(find.text('Поширити файл'), findsNothing);
+      expect(find.byKey(const Key('json-complete-service')), findsOneWidget);
+      expect(_issueEnabled(tester), isFalse);
+      expect(
+        controller.session!.lineReservedQuantity(
+          orderId: 'ORD-1',
+          productId: productId,
+        ),
+        2,
+      );
+
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await tester.pump();
+
+      expect(repository.commitAttempts, attempts);
+      expect(controller.revision, revision);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+    });
+
+    testWidgets('an exported order does not commit again', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, then: _exportOrd1);
+      final controller = await _pumpDetails(tester, repository);
+      final attempts = repository.commitAttempts;
+      final revision = controller.revision;
+
+      expect(_onDetails(find.text('Експортовано')), findsOneWidget);
+      expect(find.text('Поширити файл'), findsNothing);
+      expect(find.text('Файл Excel успішно сформовано'), findsNothing);
+      expect(find.byKey(const Key('json-complete-service')), findsOneWidget);
+      expect(_issueEnabled(tester), isFalse);
+
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await tester.pump();
+
+      expect(repository.commitAttempts, attempts);
+      expect(controller.revision, revision);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(
+        controller.session!.lineReservedQuantity(
+          orderId: 'ORD-1',
+          productId: productId,
+        ),
+        2,
+      );
+    });
+
+    testWidgets('a remote reload updates readiness and issued status', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      final transport = _Transport();
+      await _seed(repository);
+      final controller = await _pumpDetails(
+        tester,
+        repository,
+        transport: transport,
+      );
+
+      expect(_issueEnabled(tester), isFalse);
+      expect(_onDetails(find.text('Без вибору')), findsOneWidget);
+
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.reserve(
+          orderId: 'ORD-1',
+          productId: productId,
+          address: address,
+          serialNumber: serial,
+          quantity: 2,
+        ),
+        isA<FulfilmentCommitted<ReserveResult>>(),
+      );
+      final afterReserve = repository.commitAttempts;
+      transport.deliver(
+        StorageChangeNotice(
+          revision: '${other.revision}',
+          fingerprint: controller.fingerprint!,
+          senderId: 'remote-tab',
+        ),
+      );
+      await _until(tester, () => _issueEnabled(tester));
+
+      expect(repository.commitAttempts, afterReserve);
+      expect(controller.revision, other.revision);
+      expect(_onDetails(find.text('Готово до видачі')), findsOneWidget);
+      expect(find.text('Обрано 2 з 2'), findsOneWidget);
+
+      expect(
+        await other.issueOrder('ORD-1'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      final afterIssue = repository.commitAttempts;
+      transport.deliver(
+        StorageChangeNotice(
+          revision: '${other.revision}',
+          fingerprint: controller.fingerprint!,
+          senderId: 'remote-tab',
+        ),
+      );
+      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+
+      expect(repository.commitAttempts, afterIssue);
+      expect(_onDetails(find.text('Видано')), findsOneWidget);
+      expect(_issueEnabled(tester), isFalse);
+      expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
+      expect(
+        controller.session!.lineReservedQuantity(
+          orderId: 'ORD-1',
+          productId: productId,
+        ),
+        2,
+      );
+    });
+
+    testWidgets('a revision conflict blocks until an explicit refresh', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, then: _reserveReady);
+      final controller = await _pumpDetails(tester, repository);
+
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.issueOrder('ORD-1'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      final attempts = repository.commitAttempts;
+
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await _until(
+        tester,
+        () => find
+            .byKey(const Key('json-order-details-blocked'))
+            .evaluate()
+            .isNotEmpty,
+      );
+
+      expect(find.text(AppStrings.jsonRevisionConflict), findsOneWidget);
+      expect(find.text('Роботу призупинено'), findsOneWidget);
+      expect(find.byKey(const Key('json-order-details')), findsNothing);
+      expect(find.byKey(const Key('json-complete-service')), findsNothing);
+      expect(find.text('Видано'), findsNothing);
+      expect(controller.phase, FulfilmentUiPhase.blocked);
+      expect(controller.block, PersistenceBlock.revisionConflict);
+      expect(repository.commitAttempts, attempts + 1);
+
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(repository.commitAttempts, attempts + 1);
+
+      await tester.tap(find.byKey(const Key('json-order-details-retry')));
+      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+
+      expect(find.byKey(const Key('json-order-details-blocked')), findsNothing);
+      expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
+      expect(_onDetails(find.text('Видано')), findsOneWidget);
+      expect(_issueEnabled(tester), isFalse);
+      expect(controller.phase, FulfilmentUiPhase.ready);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(repository.commitAttempts, attempts + 1);
+      expect(
+        controller.session!.lineReservedQuantity(
+          orderId: 'ORD-1',
+          productId: productId,
+        ),
+        2,
+      );
+    });
+
+    testWidgets('a reload that wins shows the issued order without a commit', (
+      tester,
+    ) async {
+      final repository = _GatedRepository();
+      await _seed(repository, then: _reserveReady);
+      final transport = _Transport();
+      final controller = await _pumpDetails(
+        tester,
+        repository,
+        transport: transport,
+      );
+      expect(_issueEnabled(tester), isTrue);
+
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.issueOrder('ORD-1'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      final attempts = repository.commitAttempts;
+      final loads = repository.loads;
+      final gate = Completer<void>();
+      repository.loadGate = gate;
+      transport.deliver(
+        StorageChangeNotice(
+          revision: '${other.revision}',
+          fingerprint: controller.fingerprint!,
+          senderId: 'remote-tab',
+        ),
+      );
+      await _until(tester, () => repository.loads == loads + 1);
+      expect(_onDetails(find.text('Готово до видачі')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await tester.pump();
+      gate.complete();
+      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+
+      expect(find.byKey(const Key('json-order-details-blocked')), findsNothing);
+      expect(find.text(AppStrings.jsonRevisionConflict), findsNothing);
+      expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
+      expect(_issueEnabled(tester), isFalse);
+      expect(controller.phase, FulfilmentUiPhase.ready);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(repository.commitAttempts, attempts);
+    });
+
+    testWidgets('a storage failure shows the blocked message', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, then: _reserveReady);
+      await _pumpDetails(tester, repository);
+      repository.failNextCommit();
+      final attempts = repository.commitAttempts;
+
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await _until(
+        tester,
+        () => find
+            .byKey(const Key('json-order-details-blocked'))
+            .evaluate()
+            .isNotEmpty,
+      );
+
+      expect(find.text('Роботу призупинено'), findsOneWidget);
+      expect(find.text(AppStrings.jsonStorageFailed), findsOneWidget);
+      expect(find.byKey(const Key('json-order-details')), findsNothing);
+      expect(find.byKey(const Key('json-order-details-retry')), findsOneWidget);
+      expect(find.text('Видано'), findsNothing);
+      expect(repository.commitAttempts, attempts + 1);
+
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(repository.commitAttempts, attempts + 1);
+
+      final stored = FulfilmentApplication(repository: repository);
+      expect(await stored.load(), isA<LoadReady>());
+      expect(stored.session!.statusOf('ORD-1'), OrderStatus.readyForIssue);
+      expect(
+        stored.session!.lineReservedQuantity(
+          orderId: 'ORD-1',
+          productId: productId,
+        ),
+        2,
+      );
+    });
+
+    testWidgets('repeated taps while a commit is held produce one commit', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, then: _reserveReady);
+      final controller = await _pumpDetails(tester, repository);
+      final attempts = repository.commitAttempts;
+      final revision = controller.revision!;
+      final hold = repository.holdNextCommit();
+
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await tester.pump();
+      await hold.started;
+      expect(_issueEnabled(tester), isFalse);
+      await tester.tap(find.byKey(const Key('json-complete-service')));
+      await tester.pump();
+
+      expect(repository.commitAttempts, attempts + 1);
+      expect(find.text('Видано'), findsNothing);
+
+      hold.release();
+      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+
+      expect(repository.commitAttempts, attempts + 1);
+      expect(controller.revision, revision + 1);
+      expect(_issueEnabled(tester), isFalse);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
     });
   });
 
@@ -830,6 +1350,8 @@ void main() {
 
     expect(find.byType(OrderDetailsScreen), findsOneWidget);
     expect(find.byKey(const Key('complete-service')), findsOneWidget);
+    expect(find.byKey(const Key('json-complete-service')), findsNothing);
+    expect(find.text('Файл Excel успішно сформовано'), findsNothing);
     expect(find.text('Секретний товар Альфа'), findsOneWidget);
     expect(find.byType(JsonOrderDetailsScreen), findsNothing);
     expect(find.byType(JsonOrdersScreen), findsNothing);
@@ -969,8 +1491,14 @@ Widget _host(
   FulfilmentRepository repository, {
   Future<PickedBytes?> Function()? picker,
   Widget? child,
+  _Transport? transport,
 }) {
-  return _DetailsHost(repository: repository, picker: picker, child: child);
+  return _DetailsHost(
+    repository: repository,
+    picker: picker,
+    transport: transport,
+    child: child,
+  );
 }
 
 Future<PickedBytes?> Function() _file(String name, Uint8List bytes) {
@@ -992,7 +1520,11 @@ Future<void> _until(WidgetTester tester, bool Function() done) async {
   fail('timed out waiting for the JSON order details screen');
 }
 
-Future<void> _seed(MemoryFulfilmentRepository repository) async {
+Future<void> _seed(
+  MemoryFulfilmentRepository repository, {
+  Uint8List? bytes,
+  Future<void> Function(FulfilmentUiController controller)? then,
+}) async {
   final controller = FulfilmentUiController.open(
     repository: repository,
     databaseName: _databaseName,
@@ -1007,19 +1539,108 @@ Future<void> _seed(MemoryFulfilmentRepository repository) async {
     }
     expect(controller.phase, FulfilmentUiPhase.empty);
     expect(
-      await controller.importDataset(datasetBytes()),
+      await controller.importDataset(bytes ?? datasetBytes()),
       isA<FulfilmentImported>(),
     );
+    if (then != null) await then(controller);
   } finally {
     controller.dispose();
   }
 }
 
+Future<void> _reservePartial(FulfilmentUiController controller) async {
+  expect(
+    await controller.reserve(
+      orderId: 'ORD-1',
+      productId: productId,
+      address: address,
+      serialNumber: serial,
+      quantity: 1,
+    ),
+    isA<FulfilmentCommitted<ReserveResult>>(),
+  );
+}
+
+Future<void> _reserveReady(FulfilmentUiController controller) async {
+  expect(
+    await controller.reserve(
+      orderId: 'ORD-1',
+      productId: productId,
+      address: address,
+      serialNumber: serial,
+      quantity: 2,
+    ),
+    isA<FulfilmentCommitted<ReserveResult>>(),
+  );
+}
+
+Future<void> _issueOrd1(FulfilmentUiController controller) async {
+  await _reserveReady(controller);
+  expect(
+    await controller.issueOrder('ORD-1'),
+    isA<FulfilmentCommitted<IssueOrderResult>>(),
+  );
+}
+
+Future<void> _exportOrd1(FulfilmentUiController controller) async {
+  await _issueOrd1(controller);
+  expect(
+    await controller.commitCumulativeExport(
+      now: () => DateTime(2026, 10, 16, 12),
+    ),
+    isA<FulfilmentExported>(),
+  );
+}
+
+Future<FulfilmentUiController> _pumpDetails(
+  WidgetTester tester,
+  MemoryFulfilmentRepository repository, {
+  String orderId = 'ORD-1',
+  _Transport? transport,
+  Size size = const Size(1000, 1400),
+}) async {
+  await _setSize(tester, size);
+  await tester.pumpWidget(
+    _host(
+      repository,
+      transport: transport,
+      child: JsonOrderDetailsScreen(orderId: orderId),
+    ),
+  );
+  await _until(
+    tester,
+    () =>
+        find.byKey(const Key('json-order-details')).evaluate().isNotEmpty ||
+        find.byKey(const Key('json-order-missing')).evaluate().isNotEmpty ||
+        find
+            .byKey(const Key('json-order-details-blocked'))
+            .evaluate()
+            .isNotEmpty ||
+        find.byKey(const Key('json-order-details-empty')).evaluate().isNotEmpty,
+  );
+  return FulfilmentScope.read(
+    tester.element(find.byType(JsonOrderDetailsScreen)),
+  );
+}
+
+bool _issueEnabled(WidgetTester tester) {
+  return tester
+          .widget<FilledButton>(find.byKey(const Key('json-complete-service')))
+          .onPressed !=
+      null;
+}
+
 class _DetailsHost extends StatefulWidget {
-  const _DetailsHost({required this.repository, this.picker, this.child});
+  const _DetailsHost({
+    required this.repository,
+    this.picker,
+    this.transport,
+    this.child,
+  });
 
   final FulfilmentRepository repository;
   final Future<PickedBytes?> Function()? picker;
+  final _Transport? transport;
   final Widget? child;
 
   @override
@@ -1028,14 +1649,16 @@ class _DetailsHost extends StatefulWidget {
 
 class _DetailsHostState extends State<_DetailsHost> {
   late final FulfilmentUiController _controller;
+  late final _Transport _transport;
 
   @override
   void initState() {
     super.initState();
+    _transport = widget.transport ?? _Transport();
     _controller = FulfilmentUiController.open(
       repository: widget.repository,
       databaseName: _databaseName,
-      transport: _Transport(),
+      transport: _transport,
       visibility: _Pages(),
       senderId: 'json-order-details-test',
     );
@@ -1101,6 +1724,10 @@ final class _Pages implements PageVisibility {
 }
 
 final class _Transport implements StorageChangeTransport {
+  void Function(StorageChangeNotice notice)? onNotice;
+
+  void deliver(StorageChangeNotice notice) => onNotice?.call(notice);
+
   @override
   bool get isAvailable => true;
 
@@ -1108,8 +1735,38 @@ final class _Transport implements StorageChangeTransport {
   bool publish(StorageChangeNotice notice) => true;
 
   @override
-  void listen(void Function(StorageChangeNotice notice) onNotice) {}
+  void listen(void Function(StorageChangeNotice notice) onNotice) {
+    this.onNotice = onNotice;
+  }
 
   @override
   void close() {}
+}
+
+Uint8List _serviceOnlyBytes() {
+  const json =
+      '{"storeName":"Магазин Тест","dbName":"Store_01-A",'
+      '"dateCreate":"20261003114618","stocks":[{"Address":"A-01",'
+      '"ProductID":1290564103789190763,"SerialNumber":"SN-0001","Quantity":5}],'
+      '"orders":[{"OrderID":"ORD-S","InvoiceDate":"20261003114618",'
+      '"InvoiceNumber":"INV-S","OrderNumber":7,'
+      '"Customer":"Клієнт Послуга","CustomerPhone":"0501112233","Goods":[{'
+      '"Product":"Доставка","ProductID":1290564103789190888,"Quantity":1,'
+      '"Price":15.00,"Amount":15.00,"isServiceGood":1,"isParcel":0}]}]}';
+  return Uint8List.fromList(utf8.encode(json));
+}
+
+Uint8List _parcelOrderBytes() {
+  const json =
+      '{"storeName":"Магазин Тест","dbName":"Store_01-A",'
+      '"dateCreate":"20261003114618","stocks":[{"Address":"A-02",'
+      '"ProductID":1290564103789190999,"SerialNumber":"TTN-PARCEL-1",'
+      '"Quantity":2}],"orders":[{"OrderID":"ORD-P",'
+      '"InvoiceDate":"20261003114618","InvoiceNumber":"INV-P",'
+      '"OrderNumber":8,"Customer":"Клієнт Посилка",'
+      '"CustomerPhone":"0501112233","Goods":[{"Product":"Товар Посилка",'
+      '"ProductID":1290564103789190999,"Quantity":2,"Price":50.00,'
+      '"Amount":100.00,"isServiceGood":0,"isParcel":1,'
+      '"ParcelTTN":"TTN-PARCEL-1"}]}]}';
+  return Uint8List.fromList(utf8.encode(json));
 }

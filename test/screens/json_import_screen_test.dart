@@ -16,6 +16,8 @@ import 'package:retail_offline/persistence/browser/storage_change_notice.dart';
 import 'package:retail_offline/persistence/fulfilment_repository.dart';
 import 'package:retail_offline/screens/home/home_screen.dart';
 import 'package:retail_offline/screens/json_import/json_import_screen.dart';
+import 'package:retail_offline/screens/json_orders/json_orders_screen.dart';
+import 'package:retail_offline/screens/orders/orders_screen.dart';
 import 'package:retail_offline/screens/store_selection/store_selection_screen.dart';
 import 'package:retail_offline/services/file/json_file_service.dart';
 import 'package:retail_offline/services/file/picked_bytes.dart';
@@ -384,6 +386,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(JsonOrdersScreen), findsNothing);
+      expect(find.byType(OrdersScreen), findsNothing);
+      expect(find.byKey(const Key('json-view-orders')), findsNothing);
       expect(find.text('ТВ Тестовий Магазин 1'), findsWidgets);
       expect(find.text('Файл замовлень'), findsOneWidget);
       expect(find.text('Файл залишків'), findsOneWidget);

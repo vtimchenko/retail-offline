@@ -16,6 +16,8 @@ import '../../domain/fulfilment/fulfilment_session.dart';
 import '../../persistence/dataset_fingerprint.dart';
 import '../../services/file/json_file_service.dart';
 import '../../widgets/centered_content.dart';
+import '../json_orders/json_orders_screen.dart';
+import 'fulfilment_block_message.dart';
 
 /// Temporary JSON import screen for the fulfilment controller.
 ///
@@ -128,7 +130,7 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
           ),
           FulfilmentUiPhase.ready => _ReadyBody(session: controller.session),
           FulfilmentUiPhase.blocked => _BlockedBody(
-            message: _blockedMessage(controller),
+            message: fulfilmentBlockedMessage(controller),
             refreshing: controller.refreshInFlight,
             onRetry: controller.commandInFlight || controller.refreshInFlight
                 ? null
@@ -247,42 +249,59 @@ class _ReadyBody extends StatelessWidget {
     }
     final textTheme = Theme.of(context).textTheme;
     return CenteredContent(
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                AppStrings.jsonReadyTitle,
-                style: textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    AppStrings.jsonReadyTitle,
+                    style: textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _MetaLine(
+                    label: AppStrings.jsonStoreNameLabel,
+                    value: dataset.storeName,
+                    valueKey: const Key('json-store-name'),
+                  ),
+                  _MetaLine(
+                    label: AppStrings.jsonDbNameLabel,
+                    value: dataset.dbName,
+                    valueKey: const Key('json-db-name'),
+                  ),
+                  _MetaLine(
+                    label: AppStrings.jsonDateCreateLabel,
+                    value: DisplayFormat.formatInvoiceDate(dataset.dateCreate),
+                    valueKey: const Key('json-date-create'),
+                  ),
+                  _MetaLine(
+                    label: AppStrings.jsonOrdersLabel,
+                    value: dataset.orders.length.toString(),
+                    valueKey: const Key('json-order-count'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              _MetaLine(
-                label: AppStrings.jsonStoreNameLabel,
-                value: dataset.storeName,
-                valueKey: const Key('json-store-name'),
-              ),
-              _MetaLine(
-                label: AppStrings.jsonDbNameLabel,
-                value: dataset.dbName,
-                valueKey: const Key('json-db-name'),
-              ),
-              _MetaLine(
-                label: AppStrings.jsonDateCreateLabel,
-                value: DisplayFormat.formatInvoiceDate(dataset.dateCreate),
-                valueKey: const Key('json-date-create'),
-              ),
-              _MetaLine(
-                label: AppStrings.jsonOrdersLabel,
-                value: dataset.orders.length.toString(),
-                valueKey: const Key('json-order-count'),
-              ),
-            ],
+            ),
           ),
-        ),
+          const SizedBox(height: 16),
+          FilledButton(
+            key: const Key('json-view-orders'),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const JsonOrdersScreen(),
+                ),
+              );
+            },
+            child: const Text(AppStrings.viewOrders),
+          ),
+        ],
       ),
     );
   }
@@ -383,31 +402,14 @@ class _BlockedBody extends StatelessWidget {
   }
 }
 
-String _blockedMessage(FulfilmentUiController controller) {
-  final block = controller.block;
-  if (block != null) return _blockText(block);
-  return AppStrings.jsonReadFailed;
-}
-
-String _blockText(PersistenceBlock block) {
-  return switch (block) {
-    PersistenceBlock.revisionConflict => AppStrings.jsonRevisionConflict,
-    PersistenceBlock.storageUnavailable => AppStrings.jsonStorageUnavailable,
-    PersistenceBlock.storageFailed => AppStrings.jsonStorageFailed,
-    PersistenceBlock.corrupted => AppStrings.jsonCorrupted,
-    PersistenceBlock.unsupportedVersion => AppStrings.jsonUnsupportedVersion,
-    PersistenceBlock.revisionOverflow => AppStrings.jsonRevisionOverflow,
-  };
-}
-
 String _failureMessage(FulfilmentImportResult result) {
   return switch (result) {
     FulfilmentImported() => AppStrings.jsonImportRejected,
     FulfilmentImportRejected(:final failure) => _restoreMessage(failure),
     FulfilmentDatasetRejected(:final problem) => _problemMessage(problem),
     FulfilmentImportOccupied() => AppStrings.jsonImportOccupied,
-    FulfilmentImportBlocked(:final block) => _blockText(block),
-    FulfilmentImportFailed(:final block) => _blockText(block),
+    FulfilmentImportBlocked(:final block) => fulfilmentBlockText(block),
+    FulfilmentImportFailed(:final block) => fulfilmentBlockText(block),
   };
 }
 

@@ -69,6 +69,41 @@ abstract final class AppStrings {
   static const String getFile = 'Отримати файл';
   static const String viewOrders = 'Переглянути замовлення';
 
+  // ---- JSON import. Temporary entry beside the Excel workflow. ----
+  static const String jsonModeEntry = 'Новий JSON-режим';
+  static const String jsonScreenTitle = 'JSON-режим';
+  static const String jsonLoading = 'Завантаження збережених даних…';
+  static const String jsonEmptyTitle = 'Немає збережених даних';
+  static const String jsonEmptyMessage =
+      'Імпортуйте локальний файл JSON, щоб почати роботу.';
+  static const String jsonImport = 'Імпортувати JSON';
+  static const String jsonImporting = 'Імпорт JSON…';
+  static const String jsonReadyTitle = 'Дані завантажено';
+  static const String jsonStoreNameLabel = 'Магазин';
+  static const String jsonDbNameLabel = 'База даних';
+  static const String jsonDateCreateLabel = 'Дата створення';
+  static const String jsonOrdersLabel = 'Замовлень';
+  static const String jsonBlockedTitle = 'Роботу призупинено';
+  static const String jsonReadFailed = 'Не вдалося прочитати збережені дані.';
+  static const String jsonImportRejected =
+      'Не вдалося імпортувати файл JSON. Перевірте файл і спробуйте ще раз.';
+  static const String jsonMalformedUtf8 =
+      'Файл не є текстом JSON у кодуванні UTF-8.';
+  static const String jsonImportOccupied =
+      'Імпорт не виконано, бо дані вже завантажені.';
+  static const String jsonRevisionConflict =
+      'Дані змінилися в іншій вкладці. Збережене не перезаписано. '
+      'Оновіть дані, щоб побачити актуальний стан.';
+  static const String jsonStorageUnavailable =
+      'Не вдалося відкрити збережені дані.';
+  static const String jsonStorageFailed =
+      'Не вдалося прочитати або записати дані.';
+  static const String jsonCorrupted = 'Збережені дані пошкоджені.';
+  static const String jsonUnsupportedVersion =
+      'Збережені дані мають непідтримувану версію.';
+  static const String jsonRevisionOverflow =
+      'Неможливо продовжити: вичерпано номер версії даних.';
+
   // ---- Orders ----
   static const String ordersScreenTitle = 'Замовлення';
   static const String invoiceDateLabel = 'Дата';
@@ -133,4 +168,13 @@ abstract final class AppStrings {
     int requiredQuantity,
     int selectedQuantity,
   ) => '$product — потрібно $requiredQuantity, обрано $selectedQuantity';
+
+  static String jsonDuplicateStock({
+    required String? productId,
+    required String? address,
+    required String? serialNumber,
+  }) =>
+      'У наборі даних повторюється залишок '
+      '«ProductID» $productId, «Address» «$address», '
+      '«SerialNumber» «$serialNumber».';
 }

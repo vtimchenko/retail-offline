@@ -9,6 +9,9 @@ abstract final class ImportMessages {
       'Якщо файл у старому форматі .xls, збережіть його як «Книга Excel '
       '(.xlsx)» і оберіть ще раз.';
 
+  static const String notJsonExtension =
+      'Потрібен файл JSON (.json). Оберіть файл із розширенням .json.';
+
   static const String emptyFile = 'Обраний файл порожній.';
 
   static const String fileReadFailed =

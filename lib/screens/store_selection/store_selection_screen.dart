@@ -11,6 +11,7 @@ import '../../widgets/centered_content.dart';
 import '../../widgets/status_message.dart';
 import '../../widgets/store_search_field.dart';
 import '../home/home_screen.dart';
+import '../json_import/json_import_screen.dart';
 
 /// First screen: lets the user pick the store they work in.
 class StoreSelectionScreen extends StatefulWidget {
@@ -88,49 +89,63 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> {
     );
   }
 
+  void _openJsonImport() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const JsonImportScreen()));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: FutureBuilder<List<Store>>(
-          future: _storesFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const _LoadingView();
-            }
-            if (snapshot.hasError) {
-              return CenteredContent(
-                child: StatusMessage(
-                  icon: Icons.error_outline,
-                  iconColor: AppColors.error,
-                  title: AppStrings.storesErrorTitle,
-                  message: AppStrings.storesErrorMessage,
-                  actionLabel: AppStrings.retry,
-                  onAction: _reload,
-                ),
-              );
-            }
-            final stores = snapshot.data ?? const <Store>[];
-            if (stores.isEmpty) {
-              return CenteredContent(
-                child: StatusMessage(
-                  icon: Icons.store_mall_directory_outlined,
-                  title: AppStrings.storesEmptyTitle,
-                  message: AppStrings.storesEmptyMessage,
-                  actionLabel: AppStrings.retry,
-                  onAction: _reload,
-                ),
-              );
-            }
-            return CenteredContent(
-              child: _SelectionCard(
-                stores: stores,
-                selectedStore: _selectedStore,
-                onChanged: (store) => setState(() => _selectedStore = store),
-                onContinue: _selectedStore == null ? null : _continue,
+        child: Column(
+          children: [
+            Expanded(
+              child: FutureBuilder<List<Store>>(
+                future: _storesFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const _LoadingView();
+                  }
+                  if (snapshot.hasError) {
+                    return CenteredContent(
+                      child: StatusMessage(
+                        icon: Icons.error_outline,
+                        iconColor: AppColors.error,
+                        title: AppStrings.storesErrorTitle,
+                        message: AppStrings.storesErrorMessage,
+                        actionLabel: AppStrings.retry,
+                        onAction: _reload,
+                      ),
+                    );
+                  }
+                  final stores = snapshot.data ?? const <Store>[];
+                  if (stores.isEmpty) {
+                    return CenteredContent(
+                      child: StatusMessage(
+                        icon: Icons.store_mall_directory_outlined,
+                        title: AppStrings.storesEmptyTitle,
+                        message: AppStrings.storesEmptyMessage,
+                        actionLabel: AppStrings.retry,
+                        onAction: _reload,
+                      ),
+                    );
+                  }
+                  return CenteredContent(
+                    child: _SelectionCard(
+                      stores: stores,
+                      selectedStore: _selectedStore,
+                      onChanged: (store) =>
+                          setState(() => _selectedStore = store),
+                      onContinue: _selectedStore == null ? null : _continue,
+                    ),
+                  );
+                },
               ),
-            );
-          },
+            ),
+            _JsonModeEntry(onPressed: _openJsonImport),
+          ],
         ),
       ),
     );
@@ -217,6 +232,34 @@ class _SelectionCard extends StatelessWidget {
               child: const Text(AppStrings.continueButton),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _JsonModeEntry extends StatelessWidget {
+  const _JsonModeEntry({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: AppConstants.formMaxWidth,
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              key: const Key('json-mode-entry'),
+              onPressed: onPressed,
+              child: const Text(AppStrings.jsonModeEntry),
+            ),
+          ),
         ),
       ),
     );

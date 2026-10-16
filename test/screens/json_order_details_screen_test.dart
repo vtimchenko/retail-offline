@@ -22,6 +22,7 @@ import 'package:retail_offline/repositories/session_data_repository.dart';
 import 'package:retail_offline/screens/json_import/json_import_screen.dart';
 import 'package:retail_offline/screens/json_orders/json_order_details_screen.dart';
 import 'package:retail_offline/screens/json_orders/json_orders_screen.dart';
+import 'package:retail_offline/screens/json_orders/json_serial_selection_screen.dart';
 import 'package:retail_offline/screens/orders/order_details_screen.dart';
 import 'package:retail_offline/screens/orders/orders_screen.dart';
 import 'package:retail_offline/screens/orders/serial_selection_screen.dart';
@@ -69,12 +70,13 @@ void main() {
       expect(find.text('Поширити файл'), findsNothing);
       expect(find.text('Додати'), findsNothing);
       expect(find.text('Прибрати'), findsNothing);
+      expect(find.byType(JsonSerialSelectionScreen), findsNothing);
       expect(
         find.descendant(
           of: find.byKey(ValueKey('json-good-$productId')),
           matching: find.byType(InkWell),
         ),
-        findsNothing,
+        findsOneWidget,
       );
 
       expect(
@@ -307,6 +309,27 @@ void main() {
       expect(find.text('Не потребує вибору'), findsOneWidget);
       expect(
         find.byKey(ValueKey('json-good-ready-$_serviceId')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('json-good-$_serviceId')),
+          matching: find.byType(InkWell),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('json-good-$productId')),
+          matching: find.byType(InkWell),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('json-good-$_parcelId')),
+          matching: find.byType(InkWell),
+        ),
         findsOneWidget,
       );
       expect(
@@ -810,6 +833,14 @@ void main() {
     expect(find.text('Секретний товар Альфа'), findsOneWidget);
     expect(find.byType(JsonOrderDetailsScreen), findsNothing);
     expect(find.byType(JsonOrdersScreen), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('order-item-row-0')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SerialSelectionScreen), findsOneWidget);
+    expect(find.byType(JsonSerialSelectionScreen), findsNothing);
+    expect(find.text('Додати'), findsOneWidget);
+    expect(find.text('Прибрати'), findsOneWidget);
   });
 }
 

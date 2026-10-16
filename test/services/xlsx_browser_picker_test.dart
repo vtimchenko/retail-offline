@@ -214,6 +214,23 @@ void main() {
     unawaited(pick);
   });
 
+  test('a JSON pick uses the same chooser with a .json filter', () async {
+    final pick = _Tracker(pickJsonFromBrowser());
+    final click = chooser.clicks.single;
+    expect(click['accept'], '.json');
+    expect(click['multiple'], isFalse);
+    expect(click['connected'], isFalse);
+    expect(click['hasParent'], isFalse);
+
+    chooser.choose(chooser.lastInput, 'dataset.json', const [123, 34, 125]);
+    await _settle();
+
+    expect(pick.error, isNull);
+    expect(pick.value!.name, 'dataset.json');
+    expect(pick.value!.bytes, orderedEquals(const [123, 34, 125]));
+    expect(pendingPickCount, 0);
+  });
+
   test('the input stays detached; the DOM is not touched', () async {
     final bodyBefore = _bodyChildren();
     final pick = _Tracker(pickXlsxFromBrowser());

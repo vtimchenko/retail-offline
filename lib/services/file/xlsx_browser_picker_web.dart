@@ -10,6 +10,8 @@ import 'picked_bytes.dart';
 /// and returns its name and bytes (in memory only: no paths, no object URLs,
 /// no persistence).
 ///
+/// JSON import uses the same chooser through [pickJsonFromBrowser].
+///
 /// * `change` with a file -> the file; `change` without one, or the native
 ///   `cancel` event -> `null`.
 /// * Cancellation is signalled ONLY by the native `cancel` event. There is no
@@ -29,13 +31,19 @@ import 'picked_bytes.dart';
 /// clicked), so an internally rejected request is never reported as a user
 /// cancellation and the first pick still finishes through its own
 /// `change`/`cancel` event.
-Future<PickedBytes?> pickXlsxFromBrowser() {
+Future<PickedBytes?> pickXlsxFromBrowser() => _pickFromBrowser('.xlsx');
+
+/// Lets the user choose one `.json` file. The lifecycle matches
+/// [pickXlsxFromBrowser], including the single pending pick.
+Future<PickedBytes?> pickJsonFromBrowser() => _pickFromBrowser('.json');
+
+Future<PickedBytes?> _pickFromBrowser(String accept) {
   if (_pending != null) {
     return Future<PickedBytes?>.error(
       StateError('A file pick is already in progress.'),
     );
   }
-  return _PendingPick().start();
+  return _PendingPick(accept).start();
 }
 
 /// The pick in progress, or `null`.
@@ -61,7 +69,9 @@ int get pendingPickCount => _pending == null ? 0 : 1;
 bool isPendingInput(Object input) => identical(_pending?.input, input);
 
 final class _PendingPick {
-  _PendingPick() : input = HTMLInputElement();
+  _PendingPick(this._accept) : input = HTMLInputElement();
+
+  final String _accept;
 
   /// Created detached and kept detached: never added to the document.
   final HTMLInputElement input;
@@ -78,7 +88,7 @@ final class _PendingPick {
   Future<PickedBytes?> start() {
     input
       ..type = 'file'
-      ..accept = '.xlsx'
+      ..accept = _accept
       ..multiple = false;
     input.addEventListener('change', _onChange);
     input.addEventListener('cancel', _onCancel);

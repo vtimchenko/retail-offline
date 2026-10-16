@@ -21,4 +21,12 @@ abstract final class AppColors {
   /// Light blue row/card for an order with a current Excel file.
   static const Color orderStatusFileReadyBackground = Color(0xFFE7F1FB);
   static const Color orderStatusFileReadyForeground = Color(0xFF0D47A1);
+
+  /// Quiet mint row/card for a JSON order that has been issued.
+  static const Color orderStatusIssuedBackground = Color(0xFFE5F4EF);
+  static const Color orderStatusIssuedForeground = Color(0xFF0E6B4F);
+
+  /// Quiet indigo row/card for a JSON order included in an export.
+  static const Color orderStatusExportedBackground = Color(0xFFEEF1F8);
+  static const Color orderStatusExportedForeground = Color(0xFF3949AB);
 }

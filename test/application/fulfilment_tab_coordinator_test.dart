@@ -1031,6 +1031,235 @@ void main() {
       expect(opened.coordinator.isClosed, isTrue);
     });
   });
+
+  group('FulfilmentTabCoordinator reload notification', () {
+    test('an explicit empty reload notifies once', () async {
+      final seen = <LoadResult>[];
+      late _Opened opened;
+      opened = _Opened(
+        onReloaded: (result) {
+          seen.add(result);
+          expect(opened.application.session, isNull);
+          expect(opened.application.block, isNull);
+        },
+      );
+
+      final result = await opened.coordinator.reload();
+
+      expect(result, isA<LoadEmpty>());
+      expect(seen, hasLength(1));
+      expect(seen.single, isA<LoadEmpty>());
+      expect(opened.transport.notices, isEmpty);
+    });
+
+    test('an explicit ready reload notifies once', () async {
+      final repo = _LoadGateRepository();
+      final seen = <LoadResult>[];
+      late _Opened opened;
+      opened = _Opened(
+        repository: repo,
+        senderId: _senderId,
+        onReloaded: (result) {
+          seen.add(result);
+          expect(opened.application.revision, 1);
+          expect(opened.application.block, isNull);
+          expect(opened.application.session, isNotNull);
+        },
+      );
+      expect(
+        await opened.application.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+      expect(seen, isEmpty);
+      final before = opened.transport.notices.length;
+
+      final result = await opened.coordinator.reload();
+
+      expect(result, isA<LoadReady>());
+      expect((result as LoadReady).state.revision, 1);
+      expect(seen, hasLength(1));
+      expect(seen.single, isA<LoadReady>());
+      expect(opened.transport.notices, hasLength(before));
+    });
+
+    test('a failed reload notifies once and keeps the block', () async {
+      final repo = _LoadGateRepository();
+      final seen = <LoadResult>[];
+      late _Opened opened;
+      opened = _Opened(
+        repository: repo,
+        senderId: _senderId,
+        onReloaded: (result) {
+          seen.add(result);
+          expect(opened.application.block, PersistenceBlock.storageFailed);
+          expect(opened.application.canMutate, isFalse);
+        },
+      );
+      expect(
+        await opened.application.importDataset(datasetBytes()),
+        isA<FulfilmentImported>(),
+      );
+      final before = opened.transport.notices.length;
+      repo.failNext = true;
+
+      final result = await opened.coordinator.reload();
+
+      expect(result, isA<LoadStorageFailed>());
+      expect(seen, hasLength(1));
+      expect(seen.single, isA<LoadStorageFailed>());
+      expect(opened.application.block, PersistenceBlock.storageFailed);
+      expect(opened.application.session, isNotNull);
+      expect(opened.transport.notices, hasLength(before));
+    });
+
+    test('a remote notice notifies without an explicit waiter', () async {
+      final repo = _LoadGateRepository();
+      final seen = <LoadResult>[];
+      final opened = await _imported(repo, onReloaded: seen.add);
+      final before = opened.transport.notices.length;
+
+      opened.transport.deliver(_remote('2', opened.fingerprint));
+      await _turns(4);
+
+      expect(repo.loads, 1);
+      expect(seen, hasLength(1));
+      expect(seen.single, isA<LoadReady>());
+      expect(opened.transport.notices, hasLength(before));
+    });
+
+    test('a page resume notifies once', () async {
+      // Visibility and a restored pageshow both enter this resume listener
+      // after BrowserPageVisibility applies its own filters.
+      expect(resumesWhenVisible('visible'), isTrue);
+      expect(resumesWhenRestored(true), isTrue);
+
+      final repo = _LoadGateRepository();
+      final seen = <LoadResult>[];
+      final opened = await _imported(repo, onReloaded: seen.add);
+      final before = opened.transport.notices.length;
+
+      opened.visibility.resume();
+      await _turns(4);
+
+      expect(repo.loads, 1);
+      expect(seen, hasLength(1));
+      expect(seen.single, isA<LoadReady>());
+      expect(opened.transport.notices, hasLength(before));
+    });
+
+    test('coalesced notices notify once per completed reload', () async {
+      final repo = _LoadGateRepository();
+      final seen = <LoadResult>[];
+      final opened = await _imported(repo, onReloaded: seen.add);
+
+      opened.transport.deliver(_remote('2', opened.fingerprint));
+      opened.transport.deliver(_remote('3', opened.fingerprint));
+      opened.transport.deliver(_remote('4', _otherFingerprint));
+      await _turns(4);
+
+      expect(repo.loads, 1);
+      expect(seen, hasLength(1));
+    });
+
+    test('two waiters for one reload notify once', () async {
+      final repo = _LoadGateRepository();
+      final seen = <LoadResult>[];
+      final opened = await _imported(repo, onReloaded: seen.add);
+
+      final first = opened.coordinator.reload();
+      final second = opened.coordinator.reload();
+      final results = await Future.wait<LoadResult>([first, second]);
+
+      expect(repo.loads, 1);
+      expect(seen, hasLength(1));
+      expect(seen.single, isA<LoadReady>());
+      expect(results, everyElement(same(seen.single)));
+    });
+
+    test('close during an in-flight reload suppresses the callback', () async {
+      final repo = _LoadGateRepository();
+      final seen = <LoadResult>[];
+      final opened = await _imported(repo, onReloaded: seen.add);
+      final hold = _LoadHold();
+      repo.nextHold = hold;
+      final pending = opened.coordinator.reload();
+      await hold.entered.future;
+      final before = opened.transport.notices.length;
+
+      opened.coordinator.close();
+      hold.release.complete();
+      final result = await pending;
+      await _turns(4);
+
+      expect(result, isA<LoadReady>());
+      expect(seen, isEmpty);
+      expect(opened.coordinator.isClosed, isTrue);
+      expect(opened.transport.notices, hasLength(before));
+    });
+
+    test(
+      'a throwing callback still completes and allows another reload',
+      () async {
+        final repo = _LoadGateRepository();
+        var calls = 0;
+        final opened = _Opened(
+          repository: repo,
+          senderId: _senderId,
+          onReloaded: (_) {
+            calls += 1;
+            if (calls == 1) throw StateError('observer failed');
+          },
+        );
+        expect(
+          await opened.application.importDataset(datasetBytes()),
+          isA<FulfilmentImported>(),
+        );
+        final fingerprint = opened.application.fingerprint!;
+        final before = opened.transport.notices.length;
+        final hold = _LoadHold();
+        repo.nextHold = hold;
+        final first = opened.coordinator.reload();
+        await hold.entered.future;
+        final followUp = _LoadHold();
+        repo.nextHold = followUp;
+        opened.transport.deliver(_remote('2', fingerprint));
+
+        hold.release.complete();
+        final result = await first;
+        await followUp.entered.future;
+        expect(calls, 1);
+        expect(repo.loads, 2);
+        followUp.release.complete();
+        await _turns(4);
+
+        expect(result, isA<LoadReady>());
+        expect((result as LoadReady).state.revision, 1);
+        expect(calls, 2);
+        expect(opened.application.block, isNull);
+        expect(opened.application.revision, 1);
+        expect(opened.transport.notices, hasLength(before));
+      },
+    );
+
+    test('a missing callback leaves reload results unchanged', () async {
+      final repo = _LoadGateRepository();
+      final opened = await _imported(repo);
+      final before = opened.transport.notices.length;
+
+      final result = await opened.coordinator.reload();
+      opened.transport.deliver(_remote('2', opened.fingerprint));
+      await _turns(4);
+      opened.visibility.resume();
+      await _turns(4);
+
+      expect(result, isA<LoadReady>());
+      expect((result as LoadReady).state.revision, 1);
+      expect(opened.application.revision, 1);
+      expect(opened.application.block, isNull);
+      expect(repo.loads, 3);
+      expect(opened.transport.notices, hasLength(before));
+    });
+  });
 }
 
 const _senderId = '0123456789abcdef0123456789abcdef';
@@ -1056,8 +1285,15 @@ Future<void> _turns(int count) async {
   }
 }
 
-Future<_Opened> _imported(_LoadGateRepository repository) async {
-  final opened = _Opened(repository: repository, senderId: _senderId);
+Future<_Opened> _imported(
+  _LoadGateRepository repository, {
+  void Function(LoadResult result)? onReloaded,
+}) async {
+  final opened = _Opened(
+    repository: repository,
+    senderId: _senderId,
+    onReloaded: onReloaded,
+  );
   expect(
     await opened.application.importDataset(datasetBytes()),
     isA<FulfilmentImported>(),
@@ -1110,6 +1346,7 @@ final class _Opened {
     String? senderId,
     MemoryFulfilmentRepository? repository,
     _FakePageVisibility? visibility,
+    void Function(LoadResult result)? onReloaded,
   }) : transport = _RecordingTransport(
          available: available,
          throwOnPublish: throwOnPublish,
@@ -1123,6 +1360,7 @@ final class _Opened {
       transport: transport,
       visibility: this.visibility,
       senderId: senderId,
+      onReloaded: onReloaded,
     );
   }
 

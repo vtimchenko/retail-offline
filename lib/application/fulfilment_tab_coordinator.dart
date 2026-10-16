@@ -75,6 +75,15 @@ final class FulfilmentTabCoordinator {
   ///
   /// The notice and resume listeners are registered after this coordinator
   /// exists. Registration does not read storage.
+  ///
+  /// [onReloaded] runs after each completed storage read, once the session
+  /// or persistence block is already installed. [LoadEmpty], [LoadReady],
+  /// and a failed [LoadResult] are included, even when that read has no
+  /// waiter. One completed read calls it once, however many notices or
+  /// waiters were coalesced into that read. A local commit does not call
+  /// it, and the callback does not publish a [StorageChangeNotice]. A throw
+  /// from the callback is ignored. [close] skips it, including a read that
+  /// was already in flight. Omitting it leaves this coordinator silent.
   factory FulfilmentTabCoordinator.open({
     required FulfilmentRepository repository,
     required String databaseName,
@@ -83,6 +92,7 @@ final class FulfilmentTabCoordinator {
     StorageChangeTransport? transport,
     PageVisibility? visibility,
     String? senderId,
+    void Function(LoadResult result)? onReloaded,
   }) {
     final id = senderId ?? _generateSenderId(Random.secure());
     _checkSenderId(id);
@@ -106,6 +116,7 @@ final class FulfilmentTabCoordinator {
       transport: storage,
       visibility: pages,
       senderId: id,
+      onReloaded: onReloaded,
     );
     storage.listen(coordinator._onRemote);
     pages.listen(coordinator._onResume);
@@ -117,6 +128,7 @@ final class FulfilmentTabCoordinator {
     required this._transport,
     required this._visibility,
     required this.senderId,
+    required this._onReloaded,
   });
 
   /// Session service created with this coordinator.
@@ -130,6 +142,7 @@ final class FulfilmentTabCoordinator {
 
   final StorageChangeTransport _transport;
   final PageVisibility _visibility;
+  final void Function(LoadResult result)? _onReloaded;
   var _closed = false;
   var _active = false;
   var _startScheduled = false;
@@ -292,6 +305,7 @@ final class FulfilmentTabCoordinator {
           _pending = false;
           _queuedNotice = null;
           _target = null;
+          _notifyReloaded(result);
           return;
         }
         _remember(result, trigger);
@@ -301,6 +315,7 @@ final class FulfilmentTabCoordinator {
           _pending = true;
         }
         if (_resume) _pending = true;
+        _notifyReloaded(result);
         if (!_pending) return;
       }
     } finally {
@@ -309,6 +324,16 @@ final class FulfilmentTabCoordinator {
       if (!_closed && (_waiters.isNotEmpty || _target != null || _resume)) {
         _schedule();
       }
+    }
+  }
+
+  void _notifyReloaded(LoadResult result) {
+    final notify = _onReloaded;
+    if (notify == null || _closed) return;
+    try {
+      notify(result);
+    } on Object {
+      // The reload already finished. The observer cannot undo it.
     }
   }
 

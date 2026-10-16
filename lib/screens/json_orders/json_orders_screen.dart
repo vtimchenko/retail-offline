@@ -10,12 +10,13 @@ import '../../models/retail_dataset.dart';
 import '../../widgets/status_message.dart';
 import '../json_import/fulfilment_block_message.dart';
 import 'dataset_order_search.dart';
+import 'json_order_details_screen.dart';
 
 /// Lists orders from the current JSON [FulfilmentSession].
 ///
 /// The session is read from [FulfilmentScope] on every build. This screen
-/// does not keep a session or an order list of its own, and it does not
-/// open order details. Rows are identified by [DatasetOrder.orderId].
+/// does not keep a session or an order list of its own. A row opens
+/// [JsonOrderDetailsScreen] with that row's [DatasetOrder.orderId] only.
 class JsonOrdersScreen extends StatefulWidget {
   /// Creates a list bound to the ambient fulfilment controller.
   const JsonOrdersScreen({super.key});
@@ -430,6 +431,14 @@ class _OrdersTableHeader extends StatelessWidget {
   }
 }
 
+void _openJsonOrder(BuildContext context, String orderId) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => JsonOrderDetailsScreen(orderId: orderId),
+    ),
+  );
+}
+
 class _OrderTableRow extends StatelessWidget {
   const _OrderTableRow({super.key, required this.order, required this.status});
 
@@ -441,16 +450,19 @@ class _OrderTableRow extends StatelessWidget {
     final visual = status == null ? null : _statusStyle(status!);
     return Material(
       color: visual?.background ?? AppColors.background,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        child: _OrderColumns(
-          date: DisplayFormat.formatInvoiceDate(order.invoiceDate),
-          invoiceNumber: order.invoiceNumber,
-          orderNumber: order.orderNumber.literal,
-          customer: order.customer,
-          phone: order.customerPhone,
-          status: _OrderStatusBadge(status: status),
-          style: Theme.of(context).textTheme.bodyMedium,
+      child: InkWell(
+        onTap: () => _openJsonOrder(context, order.orderId),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          child: _OrderColumns(
+            date: DisplayFormat.formatInvoiceDate(order.invoiceDate),
+            invoiceNumber: order.invoiceNumber,
+            orderNumber: order.orderNumber.literal,
+            customer: order.customer,
+            phone: order.customerPhone,
+            status: _OrderStatusBadge(status: status),
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ),
       ),
     );
@@ -515,22 +527,28 @@ class _OrderCard extends StatelessWidget {
     final visual = status == null ? null : _statusStyle(status!);
     return Card(
       color: visual?.background,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _OrderStatusBadge(status: status),
-            const SizedBox(height: 8),
-            _CardField(
-              AppStrings.invoiceDateLabel,
-              DisplayFormat.formatInvoiceDate(order.invoiceDate),
-            ),
-            _CardField(AppStrings.invoiceNumberLabel, order.invoiceNumber),
-            _CardField(AppStrings.orderNumberLabel, order.orderNumber.literal),
-            _CardField(AppStrings.customerLabel, order.customer),
-            _CardField(AppStrings.customerPhoneLabel, order.customerPhone),
-          ],
+      child: InkWell(
+        onTap: () => _openJsonOrder(context, order.orderId),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _OrderStatusBadge(status: status),
+              const SizedBox(height: 8),
+              _CardField(
+                AppStrings.invoiceDateLabel,
+                DisplayFormat.formatInvoiceDate(order.invoiceDate),
+              ),
+              _CardField(AppStrings.invoiceNumberLabel, order.invoiceNumber),
+              _CardField(
+                AppStrings.orderNumberLabel,
+                order.orderNumber.literal,
+              ),
+              _CardField(AppStrings.customerLabel, order.customer),
+              _CardField(AppStrings.customerPhoneLabel, order.customerPhone),
+            ],
+          ),
         ),
       ),
     );

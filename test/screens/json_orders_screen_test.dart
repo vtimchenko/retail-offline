@@ -21,9 +21,7 @@ import 'package:retail_offline/screens/home/home_screen.dart';
 import 'package:retail_offline/screens/json_import/json_import_screen.dart';
 import 'package:retail_offline/screens/json_orders/dataset_order_search.dart';
 import 'package:retail_offline/screens/json_orders/json_orders_screen.dart';
-import 'package:retail_offline/screens/orders/order_details_screen.dart';
 import 'package:retail_offline/screens/orders/orders_screen.dart';
-import 'package:retail_offline/screens/orders/serial_selection_screen.dart';
 import 'package:retail_offline/screens/store_selection/store_selection_screen.dart';
 import 'package:retail_offline/services/file/json_file_service.dart';
 import 'package:retail_offline/services/file/picked_bytes.dart';
@@ -135,21 +133,6 @@ void main() {
       expect(find.text(_largeOrderNumber), findsOneWidget);
       expect(find.text('42'), findsOneWidget);
       expect(find.text('Тестовий товар 1'), findsNothing);
-
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('ORD-1')),
-          matching: find.byType(InkWell),
-        ),
-        findsNothing,
-      );
-      await tester.tap(find.byKey(const ValueKey('ORD-1')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(find.byType(JsonOrdersScreen), findsOneWidget);
-      expect(find.byType(OrderDetailsScreen), findsNothing);
-      expect(find.byType(SerialSelectionScreen), findsNothing);
 
       expect(find.byType(BackButton), findsOneWidget);
       await tester.tap(find.byType(BackButton));

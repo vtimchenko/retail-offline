@@ -123,9 +123,19 @@ abstract final class AppStrings {
       'Жодне замовлення не відповідає пошуку.';
   static const String orderItemsTitle = 'Товари';
   static const String productLabel = 'Товар';
+  static const String productIdLabel = 'Код товару';
   static const String quantityLabel = 'Кількість';
   static const String priceLabel = 'Ціна';
   static const String amountLabel = 'Сума';
+  static const String orderTotalLabel = 'Сума замовлення';
+  static const String parcelGoodLabel = 'Посилка';
+  static const String serviceGoodLabel = 'Послуга';
+  static const String parcelTtnLabel = 'ТТН посилки';
+  static const String serviceLineProgress = 'Не потребує вибору';
+  static const String jsonOrderNotFoundTitle = 'Замовлення не знайдено';
+  static const String jsonOrderNotFoundMessage =
+      'Цього замовлення немає в поточних даних.';
+  static const String jsonBackToOrders = 'До списку замовлень';
 
   // ---- Serial selection ----
   static const String completeService = 'Завершити обслуговування';

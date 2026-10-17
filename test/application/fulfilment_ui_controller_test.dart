@@ -658,16 +658,38 @@ void main() {
       expect(controller.commandInFlight, isFalse);
       expect(repository.commitAttempts, attempts + 1);
 
+      final forwarded = await controller.replaceDataset(
+        catalogue(storeName: 'Третій магазин', dbName: 'Store_03-C'),
+        confirmedRevision: controller.revision,
+      );
+
+      expect(forwarded, isA<FulfilmentReplaced>());
+      expect(controller.session!.dataset.dbName, 'Store_03-C');
+      expect(controller.revision, 3);
+      expect(repository.commitAttempts, attempts + 2);
+
+      final stale = await controller.replaceDataset(
+        datasetBytes(),
+        confirmedRevision: 1,
+      );
+
+      expect(stale, isA<FulfilmentReplacementStale>());
+      expect((stale! as FulfilmentReplacementStale).revision, 3);
+      expect(controller.phase, FulfilmentUiPhase.ready);
+      expect(controller.block, isNull);
+      expect(controller.session!.dataset.dbName, 'Store_03-C');
+      expect(repository.commitAttempts, attempts + 2);
+
       final invalid = await controller.replaceDataset(
         Uint8List.fromList('{'.codeUnits),
       );
 
       expect(invalid, isA<FulfilmentReplacementInputRejected>());
       expect(controller.phase, FulfilmentUiPhase.ready);
-      expect(controller.revision, 2);
+      expect(controller.revision, 3);
       expect(controller.block, isNull);
       expect(controller.operationError, isNull);
-      expect(repository.commitAttempts, attempts + 1);
+      expect(repository.commitAttempts, attempts + 2);
     });
 
     test('export forwards the result and clears the in-flight flag', () async {

@@ -1515,7 +1515,9 @@ void main() {
 
       expect(find.byKey(const Key('json-create-export')), findsNothing);
       expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(find.byKey(const Key('json-replace-dataset')), findsNothing);
       expect(find.text(AppStrings.jsonCreateExport), findsNothing);
+      expect(find.text(AppStrings.jsonReplaceDataset), findsNothing);
 
       await tester.tap(find.byKey(const ValueKey('900000001')));
       await tester.pumpAndSettle();
@@ -1525,6 +1527,7 @@ void main() {
       expect(find.text(AppStrings.completeService), findsOneWidget);
       expect(find.byKey(const Key('json-create-export')), findsNothing);
       expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(find.byKey(const Key('json-replace-dataset')), findsNothing);
       expect(find.byType(JsonOrdersScreen), findsNothing);
       expect(find.text(AppStrings.excelFileCreated), findsNothing);
     });

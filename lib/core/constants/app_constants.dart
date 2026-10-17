@@ -109,6 +109,18 @@ abstract final class AppStrings {
       'Немає нових виданих замовлень для експорту.';
   static const String jsonExportRejected =
       'Не вдалося сформувати JSON-файл. Перевірте видані замовлення і спробуйте ще раз.';
+  static const String jsonReplaceDataset = 'Завантажити новий JSON';
+  static const String jsonReplaceExportFirst =
+      'Є видані замовлення, які ще не експортовано. Спочатку сформуйте JSON-файл.';
+  static const String jsonReplaceTitle = 'Замінити дані?';
+  static const String jsonReplaceWarning =
+      'Поточні дані та стан роботи буде замінено. Резервування, статуси '
+      'замовлень і попередній експорт буде видалено.';
+  static const String jsonReplaceCurrent = 'Зараз';
+  static const String jsonReplaceIncoming = 'Новий файл';
+  static const String jsonReplaceConfirm = 'Замінити';
+  static const String jsonReplaceStale =
+      'Дані змінилися. Поточний набір не замінено.';
 
   // ---- Orders ----
   static const String ordersScreenTitle = 'Замовлення';

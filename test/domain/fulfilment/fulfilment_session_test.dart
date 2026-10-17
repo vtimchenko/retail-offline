@@ -1075,19 +1075,30 @@ void main() {
       ],
     );
 
-    test('active reservations block replacement', () {
+    test('active reservations do not block replacement', () {
       final session = mustApply(basic()).session;
-      final result = session.replaceDataset(incoming());
+      final replaced = mustReplace(session, incoming());
 
-      expect(
-        switch (result) {
-          ReplacementBlocked(:final orderIds) => orderIds,
-          _ => fail('expected a block, got $result'),
-        },
-        ['ORD-1'],
-      );
+      expect(replaced.dataset.dbName, 'Store_02-B');
+      expect(replaced.statusOf('NEW'), OrderStatus.noSelection);
+      expect(replaced.statusOf('ORD-1'), isNull);
+      expect(lineReserved(replaced, productId: '300'), 0);
       expect(lineReserved(session), 1);
       expect(session.dataset.dbName, 'Store_01-A');
+      expect(session.statusOf('ORD-1'), OrderStatus.inProgress);
+    });
+
+    test('a fully reserved order that is not issued does not block', () {
+      final ready = mustApply(basic(stockQuantity: 1, lineQuantity: 1)).session;
+
+      expect(ready.statusOf('ORD-1'), OrderStatus.readyForIssue);
+      final replaced = mustReplace(ready, incoming());
+
+      expect(replaced.dataset.orders.single.orderId, 'NEW');
+      expect(replaced.statusOf('NEW'), OrderStatus.noSelection);
+      expect(lineReserved(replaced, productId: '300'), 0);
+      expect(lineReserved(ready), 1);
+      expect(ready.statusOf('ORD-1'), OrderStatus.readyForIssue);
     });
 
     test('an issued order that is not exported blocks replacement', () {
@@ -1125,7 +1136,44 @@ void main() {
       );
     });
 
-    test('lists every blocking order in dataset order', () {
+    test('lists every unexported issued order in dataset order', () {
+      final session = mustOpen(
+        data(
+          stocks: [slot(quantity: 4)],
+          orders: [
+            order(orderId: 'ORD-1', goods: [good(quantity: 1)]),
+            order(
+              orderId: 'ORD-2',
+              orderNumber: '2',
+              goods: [good(service: true)],
+            ),
+            order(
+              orderId: 'ORD-3',
+              orderNumber: '3',
+              goods: [good(quantity: 1)],
+            ),
+          ],
+        ),
+      );
+      var current = mustIssue(mustApply(session, quantity: 1).session);
+      current = mustIssue(current, 'ORD-2');
+      current = mustIssue(
+        mustApply(current, orderId: 'ORD-3', quantity: 1).session,
+        'ORD-3',
+      );
+
+      expect(
+        switch (current.replaceDataset(incoming())) {
+          ReplacementBlocked(:final orderIds) => orderIds,
+          _ => fail('expected every issued order to block'),
+        },
+        ['ORD-1', 'ORD-2', 'ORD-3'],
+      );
+      expect(current.statusOf('ORD-1'), OrderStatus.issued);
+      expect(lineReserved(current), 1);
+    });
+
+    test('reservations and exported orders do not join the block list', () {
       final session = mustOpen(
         data(
           stocks: [slot(quantity: 4)],
@@ -1150,10 +1198,12 @@ void main() {
       expect(
         switch (current.replaceDataset(incoming())) {
           ReplacementBlocked(:final orderIds) => orderIds,
-          _ => fail('expected ORD-1 and ORD-2 to block'),
+          _ => fail('expected only the issued order to block'),
         },
-        ['ORD-1', 'ORD-2'],
+        ['ORD-2'],
       );
+      expect(current.statusOf('ORD-1'), OrderStatus.inProgress);
+      expect(current.statusOf('ORD-3'), OrderStatus.exported);
     });
 
     test('replacement is allowed after reservations are cleared', () {
@@ -1202,9 +1252,18 @@ void main() {
     });
 
     test('a failed replacement keeps the previous session', () {
-      final session = mustApply(basic()).session;
-      final blocked = session.replaceDataset(incoming());
-      final invalid = session.replaceDataset(
+      final reserved = mustApply(basic()).session;
+      final replaced = mustReplace(reserved, incoming());
+      expect(replaced.dataset.dbName, 'Store_02-B');
+      expect(lineReserved(reserved), 1);
+      expect(reserved.statusOf('ORD-1'), OrderStatus.inProgress);
+      expect(available(reserved), 4);
+
+      final issued = mustIssue(
+        mustApply(basic(stockQuantity: 1, lineQuantity: 1)).session,
+      );
+      final blocked = issued.replaceDataset(incoming());
+      final invalid = issued.replaceDataset(
         data(
           stocks: [slot(quantity: 2), slot(quantity: 4)],
           orders: [
@@ -1218,10 +1277,9 @@ void main() {
         ReplacementRejected(:final problem) => problem.reason,
         _ => fail('invalid dataset replaced the session'),
       }, DatasetProblemReason.duplicateStock);
-      expect(identical(session.dataset.dbName, 'Store_01-A'), isTrue);
-      expect(lineReserved(session), 1);
-      expect(available(session), 4);
-      expect(session.statusOf('ORD-1'), OrderStatus.inProgress);
+      expect(issued.dataset.dbName, 'Store_01-A');
+      expect(issued.statusOf('ORD-1'), OrderStatus.issued);
+      expect(slotReserved(issued), 1);
     });
 
     test('the same dbName still follows the replacement rules', () {
@@ -1232,13 +1290,18 @@ void main() {
         ],
       );
       final busy = mustApply(basic()).session;
-      expect(busy.replaceDataset(next), isA<ReplacementBlocked>());
-      expect(lineReserved(busy), 1);
-
-      final replaced = mustReplace(basic(), next);
+      final replaced = mustReplace(busy, next);
       expect(replaced.dataset.dbName, 'Store_01-A');
       expect(replaced.statusOf('ORD-1'), isNull);
+      expect(lineReserved(busy), 1);
       expect(available(replaced, serialNumber: 'NEW'), 3);
+
+      final issued = mustIssue(
+        mustApply(basic(stockQuantity: 1, lineQuantity: 1)).session,
+      );
+      expect(issued.replaceDataset(next), isA<ReplacementBlocked>());
+      expect(issued.dataset.dbName, 'Store_01-A');
+      expect(issued.statusOf('ORD-1'), OrderStatus.issued);
     });
   });
 }

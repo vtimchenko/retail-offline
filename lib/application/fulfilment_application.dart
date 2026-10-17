@@ -239,13 +239,25 @@ class FulfilmentApplication {
   /// active only after the repository commit finishes. That commit replaces
   /// the bytes, fingerprint, and snapshot, removes the previous export, and
   /// increments the revision once.
-  Future<FulfilmentReplacementResult> replaceDataset(Uint8List originalBytes) {
+  ///
+  /// [confirmedRevision] is the revision a confirmation displayed. When it
+  /// is set and the live revision inside this serialized operation is
+  /// different, the result is [FulfilmentReplacementStale]. Nothing is
+  /// parsed, written, or blocked, and the call is not repeated. Omitting it
+  /// keeps the previous behavior.
+  Future<FulfilmentReplacementResult> replaceDataset(
+    Uint8List originalBytes, {
+    int? confirmedRevision,
+  }) {
     return _serialized(() async {
       if (_block != null) return FulfilmentReplacementBlocked(_block!);
       final current = _session;
       final revision = _revision;
       if (current == null || revision == null || _fingerprint == null) {
         return const FulfilmentReplacementNotReady();
+      }
+      if (confirmedRevision != null && confirmedRevision != revision) {
+        return FulfilmentReplacementStale(revision);
       }
 
       final fingerprint = DatasetFingerprint.of(originalBytes);
@@ -573,6 +585,22 @@ final class FulfilmentReplacementBlocked extends FulfilmentReplacementResult {
 
   /// Reason mutations are suspended.
   final PersistenceBlock block;
+}
+
+/// The revision captured for a confirmation is no longer the live revision.
+///
+/// Storage was not written. [block] stays clear, and the call is not
+/// repeated. [revision] is the live revision observed inside the serialized
+/// operation.
+final class FulfilmentReplacementStale extends FulfilmentReplacementResult {
+  /// Creates a stale-confirmation result.
+  const FulfilmentReplacementStale(this.revision);
+
+  /// Revision that was current when the replacement was refused.
+  final int revision;
+
+  @override
+  String toString() => 'FulfilmentReplacementStale($revision)';
 }
 
 /// The replacement commit did not finish, and the candidate is not active.

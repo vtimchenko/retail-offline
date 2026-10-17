@@ -7,23 +7,23 @@ import '../../application/fulfilment_application.dart';
 import '../../application/fulfilment_scope.dart';
 import '../../application/fulfilment_ui_controller.dart';
 import '../../core/constants/app_constants.dart';
-import '../../core/constants/dataset_messages.dart';
 import '../../core/constants/import_messages.dart';
 import '../../core/errors/import_exception.dart';
 import '../../core/format/display_format.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/fulfilment/fulfilment_session.dart';
-import '../../persistence/dataset_fingerprint.dart';
 import '../../services/file/json_file_service.dart';
 import '../../widgets/centered_content.dart';
 import '../json_orders/json_orders_screen.dart';
+import 'dataset_replacement.dart';
 import 'fulfilment_block_message.dart';
+import 'json_dataset_messages.dart';
 
-/// Temporary JSON import screen for the fulfilment controller.
+/// JSON import screen for the fulfilment controller.
 ///
 /// The phase, session, and commands come from [FulfilmentScope]. This screen
-/// does not parse JSON, copy the session, or replace a dataset that is
-/// already stored. A file the user cancels is ignored.
+/// does not parse JSON or copy the session. A file the user cancels is
+/// ignored. Replacing a stored dataset goes through [DatasetReplacementAction].
 class JsonImportScreen extends StatefulWidget {
   /// Creates a screen that imports through the ambient fulfilment controller.
   ///
@@ -128,7 +128,10 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
             message: _importMessage,
             onImport: _import,
           ),
-          FulfilmentUiPhase.ready => _ReadyBody(session: controller.session),
+          FulfilmentUiPhase.ready => _ReadyBody(
+            session: controller.session,
+            fileService: widget.fileService,
+          ),
           FulfilmentUiPhase.blocked => _BlockedBody(
             message: fulfilmentBlockedMessage(controller),
             refreshing: controller.refreshInFlight,
@@ -234,10 +237,13 @@ class _EmptyBody extends StatelessWidget {
 }
 
 class _ReadyBody extends StatelessWidget {
-  const _ReadyBody({required this.session});
+  const _ReadyBody({required this.session, required this.fileService});
 
   /// Live session from the controller. Not a copy kept by the screen.
   final FulfilmentSession? session;
+
+  /// Chooser shared with [DatasetReplacementAction] and the orders list.
+  final JsonFileService? fileService;
 
   @override
   Widget build(BuildContext context) {
@@ -290,12 +296,14 @@ class _ReadyBody extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          DatasetReplacementAction(fileService: fileService),
+          const SizedBox(height: 16),
           FilledButton(
             key: const Key('json-view-orders'),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const JsonOrdersScreen(),
+                  builder: (_) => JsonOrdersScreen(fileService: fileService),
                 ),
               );
             },
@@ -405,41 +413,14 @@ class _BlockedBody extends StatelessWidget {
 String _failureMessage(FulfilmentImportResult result) {
   return switch (result) {
     FulfilmentImported() => AppStrings.jsonImportRejected,
-    FulfilmentImportRejected(:final failure) => _restoreMessage(failure),
-    FulfilmentDatasetRejected(:final problem) => _problemMessage(problem),
+    FulfilmentImportRejected(:final failure) => jsonDatasetRestoreMessage(
+      failure,
+    ),
+    FulfilmentDatasetRejected(:final problem) => jsonDatasetProblemMessage(
+      problem,
+    ),
     FulfilmentImportOccupied() => AppStrings.jsonImportOccupied,
     FulfilmentImportBlocked(:final block) => fulfilmentBlockText(block),
     FulfilmentImportFailed(:final block) => fulfilmentBlockText(block),
-  };
-}
-
-String _restoreMessage(DatasetRestoreRejected failure) {
-  final message = failure.message?.trim();
-  if (message != null && message.isNotEmpty) return message;
-  return switch (failure.reason) {
-    DatasetRestoreReason.malformedUtf8 => AppStrings.jsonMalformedUtf8,
-    DatasetRestoreReason.invalidFingerprint ||
-    DatasetRestoreReason.fingerprintMismatch ||
-    DatasetRestoreReason.malformedJson ||
-    DatasetRestoreReason.invalidDataset => AppStrings.jsonImportRejected,
-  };
-}
-
-String _problemMessage(DatasetProblem problem) {
-  return switch (problem.reason) {
-    DatasetProblemReason.duplicateOrder => DatasetMessages.duplicateOrderId(
-      problem.orderId ?? '',
-    ),
-    DatasetProblemReason.duplicateProduct => DatasetMessages.duplicateProductId(
-      problem.orderId == null
-          ? DatasetMessages.inDataset
-          : DatasetMessages.orderId(problem.orderId!),
-      problem.productId ?? '',
-    ),
-    DatasetProblemReason.duplicateStock => AppStrings.jsonDuplicateStock(
-      productId: problem.productId,
-      address: problem.address,
-      serialNumber: problem.serialNumber,
-    ),
   };
 }

@@ -10,19 +10,28 @@ import 'package:retail_offline/application/fulfilment_scope.dart';
 import 'package:retail_offline/application/fulfilment_tab_coordinator.dart';
 import 'package:retail_offline/application/fulfilment_ui_controller.dart';
 import 'package:retail_offline/application/page_visibility.dart';
+import 'package:retail_offline/core/constants/app_constants.dart';
 import 'package:retail_offline/core/theme/app_colors.dart';
 import 'package:retail_offline/core/theme/app_theme.dart';
 import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
 import 'package:retail_offline/models/exact_integer.dart';
+import 'package:retail_offline/models/order.dart';
 import 'package:retail_offline/models/retail_dataset.dart';
+import 'package:retail_offline/models/store.dart';
 import 'package:retail_offline/persistence/browser/storage_change_notice.dart';
 import 'package:retail_offline/persistence/fulfilment_repository.dart';
+import 'package:retail_offline/repositories/order_export_repository.dart';
+import 'package:retail_offline/repositories/serial_selection_repository.dart';
+import 'package:retail_offline/repositories/session_data_repository.dart';
 import 'package:retail_offline/screens/home/home_screen.dart';
 import 'package:retail_offline/screens/json_import/json_import_screen.dart';
 import 'package:retail_offline/screens/json_orders/dataset_order_search.dart';
 import 'package:retail_offline/screens/json_orders/json_orders_screen.dart';
+import 'package:retail_offline/screens/orders/order_details_screen.dart';
 import 'package:retail_offline/screens/orders/orders_screen.dart';
 import 'package:retail_offline/screens/store_selection/store_selection_screen.dart';
+import 'package:retail_offline/services/file/cumulative_export_share.dart';
+import 'package:retail_offline/services/file/export_share.dart';
 import 'package:retail_offline/services/file/json_file_service.dart';
 import 'package:retail_offline/services/file/picked_bytes.dart';
 
@@ -569,6 +578,957 @@ void main() {
       expect(repository.loads, afterLoad + 1);
     });
   });
+
+  group('cumulative JSON export', () {
+    testWidgets('a dataset with no issued orders cannot export or share', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (_) async {});
+      final attempts = repository.commitAttempts;
+
+      await _openReady(tester, repository, share: _quietShare().share);
+
+      expect(_enabled(tester, 'json-create-export'), isFalse);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(find.byKey(const Key('json-last-export-file')), findsNothing);
+      expect(
+        tester.getTopLeft(find.byKey(const Key('json-create-export'))).dy,
+        lessThan(
+          tester
+              .getTopLeft(find.byKey(const Key('json-order-number-search')))
+              .dy,
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await tester.pump();
+
+      expect(repository.commitAttempts, attempts);
+      expect(find.text(AppStrings.jsonExportUnchanged), findsNothing);
+    });
+
+    testWidgets('one issued order enables export', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+
+      await _openReady(tester, repository, share: _quietShare().share);
+
+      expect(_enabled(tester, 'json-create-export'), isTrue);
+      expect(find.text('Видано'), findsOneWidget);
+      expect(find.text('Без вибору'), findsOneWidget);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+    });
+
+    testWidgets('one export commits every newly issued order', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _issue(controller, 'ORD-2', 1);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      final attempts = repository.commitAttempts;
+      final revision = controller.revision;
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(tester, () => find.text('Видано').evaluate().isEmpty);
+
+      expect(repository.commitAttempts, attempts + 1);
+      expect(controller.revision, revision! + 1);
+      expect(find.text('Експортовано'), findsNWidgets(2));
+      expect(find.text('Видано'), findsNothing);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(controller.session!.statusOf('ORD-2'), OrderStatus.exported);
+      expect(_enabled(tester, 'json-create-export'), isFalse);
+      expect(_enabled(tester, 'json-share-export'), isTrue);
+      expect(find.text(AppStrings.excelFileCreated), findsNothing);
+      expect(find.text(AppStrings.jsonExportRejected), findsNothing);
+    });
+
+    testWidgets('export marks only the issued order', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(
+        tester,
+        () => find.text('Експортовано').evaluate().isNotEmpty,
+      );
+
+      expect(find.text('Експортовано'), findsOneWidget);
+      expect(find.text('Без вибору'), findsOneWidget);
+      expect(find.text('Видано'), findsNothing);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(controller.session!.statusOf('ORD-2'), OrderStatus.noSelection);
+      expect(
+        find.text(
+          '${AppStrings.jsonLastSavedExport} ${controller.lastExport!.filename}',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an existing file with nothing new can only be shared', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _commitExport(controller);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      final attempts = repository.commitAttempts;
+
+      expect(_enabled(tester, 'json-create-export'), isFalse);
+      expect(_enabled(tester, 'json-share-export'), isTrue);
+      expect(find.text('Експортовано'), findsOneWidget);
+      expect(find.text('Без вибору'), findsOneWidget);
+      expect(
+        find.text(
+          '${AppStrings.jsonLastSavedExport} ${controller.lastExport!.filename}',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await tester.pump();
+
+      expect(repository.commitAttempts, attempts);
+      expect(controller.session!.statusOf('ORD-2'), OrderStatus.noSelection);
+    });
+
+    testWidgets('a saved file and a new issue enable both actions', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _commitExport(controller);
+        await _issue(controller, 'ORD-2', 1);
+      });
+
+      await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+        size: const Size(360, 2400),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(_enabled(tester, 'json-create-export'), isTrue);
+      expect(_enabled(tester, 'json-share-export'), isTrue);
+      expect(
+        tester.getTopLeft(find.byKey(const Key('json-share-export'))).dy,
+        greaterThan(
+          tester.getTopLeft(find.byKey(const Key('json-create-export'))).dy,
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const Key('json-last-export-file'))).dy,
+        greaterThan(
+          tester.getTopLeft(find.byKey(const Key('json-share-export'))).dy,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a later export keeps the previously exported order', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _commitExport(controller);
+        await _issue(controller, 'ORD-2', 1);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      final first = Uint8List.fromList(controller.lastExport!.bytes);
+      final attempts = repository.commitAttempts;
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(tester, () => find.text('Видано').evaluate().isEmpty);
+
+      final document = controller.lastExport!;
+      final text = utf8.decode(document.bytes);
+      expect(repository.commitAttempts, attempts + 1);
+      expect(document.bytes, isNot(first));
+      expect(text, contains('"OrderID": "ORD-1"'));
+      expect(text, contains('"OrderID": "ORD-2"'));
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(controller.session!.statusOf('ORD-2'), OrderStatus.exported);
+      expect(
+        find.text('${AppStrings.jsonLastSavedExport} ${document.filename}'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('share sends the stored filename and bytes', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _commitExport(controller);
+      });
+      final log = _quietShare();
+      final controller = await _openReady(tester, repository, share: log.share);
+      final document = controller.lastExport!;
+      final attempts = repository.commitAttempts;
+      final revision = controller.revision;
+
+      await tester.tap(find.byKey(const Key('json-share-export')));
+      await tester.pump();
+
+      expect(log.calls, hasLength(1));
+      expect(log.calls.single.$1, document.filename);
+      expect(log.calls.single.$2, document.bytes);
+      expect(utf8.decode(log.calls.single.$2), contains(productId));
+      expect(utf8.decode(log.calls.single.$2), contains(_largeOrderNumber));
+      expect(repository.commitAttempts, attempts);
+      expect(controller.revision, revision);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(find.text(AppStrings.excelShareFailed), findsNothing);
+      expect(find.text(AppStrings.excelFileCreated), findsNothing);
+    });
+
+    testWidgets('cancelling share stays silent', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _commitExport(controller);
+      });
+      final log = _quietShare(result: const ExportShareCancelled());
+      final controller = await _openReady(tester, repository, share: log.share);
+      final attempts = repository.commitAttempts;
+
+      await tester.tap(find.byKey(const Key('json-share-export')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(log.calls, hasLength(1));
+      expect(find.text(AppStrings.excelShareFailed), findsNothing);
+      expect(find.text(AppStrings.jsonExportRejected), findsNothing);
+      expect(repository.commitAttempts, attempts);
+      expect(controller.lastExport, isNotNull);
+    });
+
+    testWidgets('a failed share shows the existing message', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _commitExport(controller);
+      });
+      final log = _quietShare(result: const ExportShareFailed());
+      await _openReady(tester, repository, share: log.share);
+
+      await tester.tap(find.byKey(const Key('json-share-export')));
+      await _until(
+        tester,
+        () => find.text(AppStrings.excelShareFailed).evaluate().isNotEmpty,
+      );
+
+      expect(log.calls, hasLength(1));
+      expect(find.byKey(const Key('json-share-failed')), findsOneWidget);
+      expect(find.text(AppStrings.excelGenerationFailed), findsNothing);
+      expect(
+        _controllerOf(tester, find.byType(JsonOrdersScreen)).phase,
+        FulfilmentUiPhase.ready,
+      );
+    });
+
+    testWidgets('a held export does not change badges early', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      final hold = repository.holdNextCommit();
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await tester.pump();
+      await hold.started;
+
+      expect(find.text('Видано'), findsOneWidget);
+      expect(find.text('Експортовано'), findsNothing);
+      expect(controller.lastExport, isNull);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(_enabled(tester, 'json-create-export'), isFalse);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('json-create-export')),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text(AppStrings.excelFileCreated), findsNothing);
+
+      hold.release();
+      await _until(
+        tester,
+        () => find.text('Експортовано').evaluate().isNotEmpty,
+      );
+
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(controller.lastExport, isNotNull);
+      expect(find.text('Видано'), findsNothing);
+    });
+
+    testWidgets('sharing during an export uses the previous file', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _commitExport(controller);
+        await _issue(controller, 'ORD-2', 1);
+      });
+      final log = _quietShare();
+      final controller = await _openReady(tester, repository, share: log.share);
+      final previousName = controller.lastExport!.filename;
+      final previousBytes = Uint8List.fromList(controller.lastExport!.bytes);
+      final hold = repository.holdNextCommit();
+      final attempts = repository.commitAttempts;
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await tester.pump();
+      await hold.started;
+      await tester.tap(find.byKey(const Key('json-share-export')));
+      await tester.pump();
+
+      expect(log.calls, hasLength(1));
+      expect(log.calls.single.$1, previousName);
+      expect(log.calls.single.$2, previousBytes);
+      expect(controller.lastExport!.filename, previousName);
+      expect(controller.lastExport!.bytes, previousBytes);
+      expect(controller.session!.statusOf('ORD-2'), OrderStatus.issued);
+      expect(repository.commitAttempts, attempts + 1);
+      expect(find.text('Видано'), findsOneWidget);
+
+      hold.release();
+      await _until(
+        tester,
+        () => controller.session!.statusOf('ORD-2') == OrderStatus.exported,
+      );
+    });
+
+    testWidgets('share after the commit uses the new document', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _commitExport(controller);
+        await _issue(controller, 'ORD-2', 1);
+      });
+      final log = _quietShare();
+      final controller = await _openReady(tester, repository, share: log.share);
+      final previous = Uint8List.fromList(controller.lastExport!.bytes);
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(tester, () => find.text('Видано').evaluate().isEmpty);
+      final document = controller.lastExport!;
+
+      await tester.tap(find.byKey(const Key('json-share-export')));
+      await tester.pump();
+
+      expect(log.calls, hasLength(1));
+      expect(log.calls.single.$1, document.filename);
+      expect(log.calls.single.$2, document.bytes);
+      expect(log.calls.single.$2, isNot(previous));
+      expect(utf8.decode(log.calls.single.$2), contains('"OrderID": "ORD-1"'));
+      expect(utf8.decode(log.calls.single.$2), contains('"OrderID": "ORD-2"'));
+    });
+
+    testWidgets('a new screen restores the exported file', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+      final first = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(
+        tester,
+        () => find.text('Експортовано').evaluate().isNotEmpty,
+      );
+      final filename = first.lastExport!.filename;
+      final bytes = Uint8List.fromList(first.lastExport!.bytes);
+      final revision = first.revision;
+
+      final second = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+
+      expect(second.revision, revision);
+      expect(second.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(second.session!.statusOf('ORD-2'), OrderStatus.noSelection);
+      expect(second.lastExport!.filename, filename);
+      expect(second.lastExport!.bytes, bytes);
+      expect(
+        find.text('${AppStrings.jsonLastSavedExport} $filename'),
+        findsOneWidget,
+      );
+      expect(_enabled(tester, 'json-share-export'), isTrue);
+      expect(_enabled(tester, 'json-create-export'), isFalse);
+    });
+
+    testWidgets('a remote export updates the list and the shared file', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      final transport = _DeliveringTransport();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+        transport: transport,
+      );
+      final attempts = repository.commitAttempts;
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.commitCumulativeExport(
+          now: () => DateTime(2026, 10, 16, 15, 7, 22),
+        ),
+        isA<FulfilmentExported>(),
+      );
+      final filename = other.lastExport!.filename;
+      final bytes = Uint8List.fromList(other.lastExport!.bytes);
+
+      transport.deliver(
+        StorageChangeNotice(
+          revision: '${other.revision}',
+          fingerprint: other.fingerprint!,
+          senderId: 'remote-tab',
+        ),
+      );
+      await _until(
+        tester,
+        () => find.text('Експортовано').evaluate().isNotEmpty,
+      );
+
+      expect(repository.commitAttempts, attempts + 1);
+      expect(controller.phase, FulfilmentUiPhase.ready);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(controller.lastExport!.filename, filename);
+      expect(controller.lastExport!.bytes, bytes);
+      expect(
+        find.text('${AppStrings.jsonLastSavedExport} $filename'),
+        findsOneWidget,
+      );
+      expect(_enabled(tester, 'json-share-export'), isTrue);
+      expect(_enabled(tester, 'json-create-export'), isFalse);
+    });
+
+    testWidgets('a revision conflict blocks and does not retry', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.commitCumulativeExport(
+          now: () => DateTime(2026, 10, 16, 15, 7, 22),
+        ),
+        isA<FulfilmentExported>(),
+      );
+      final attempts = repository.commitAttempts;
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(
+        tester,
+        () =>
+            find.byKey(const Key('json-orders-blocked')).evaluate().isNotEmpty,
+      );
+
+      expect(find.text(AppStrings.jsonRevisionConflict), findsOneWidget);
+      expect(find.byKey(const Key('json-create-export')), findsNothing);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(find.text('Експортовано'), findsNothing);
+      expect(controller.phase, FulfilmentUiPhase.blocked);
+      expect(controller.block, PersistenceBlock.revisionConflict);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(repository.commitAttempts, attempts + 1);
+
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(repository.commitAttempts, attempts + 1);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+    });
+
+    testWidgets('refresh loads the other tab file without exporting again', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.commitCumulativeExport(
+          now: () => DateTime(2026, 10, 16, 15, 7, 22),
+        ),
+        isA<FulfilmentExported>(),
+      );
+      final filename = other.lastExport!.filename;
+      final bytes = Uint8List.fromList(other.lastExport!.bytes);
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(
+        tester,
+        () =>
+            find.byKey(const Key('json-orders-blocked')).evaluate().isNotEmpty,
+      );
+      final attempts = repository.commitAttempts;
+
+      await tester.tap(find.byKey(const Key('json-orders-retry')));
+      await _until(
+        tester,
+        () => find.text('Експортовано').evaluate().isNotEmpty,
+      );
+
+      expect(repository.commitAttempts, attempts);
+      expect(controller.phase, FulfilmentUiPhase.ready);
+      expect(controller.block, isNull);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(controller.lastExport!.filename, filename);
+      expect(controller.lastExport!.bytes, bytes);
+      expect(
+        find.text('${AppStrings.jsonLastSavedExport} $filename'),
+        findsOneWidget,
+      );
+      expect(_enabled(tester, 'json-share-export'), isTrue);
+      expect(_enabled(tester, 'json-create-export'), isFalse);
+      expect(find.text(AppStrings.jsonRevisionConflict), findsNothing);
+    });
+
+    testWidgets('storage failure keeps the previous file', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _commitExport(controller);
+        await _issue(controller, 'ORD-2', 1);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      final filename = controller.lastExport!.filename;
+      final bytes = Uint8List.fromList(controller.lastExport!.bytes);
+      final revision = controller.revision;
+      final attempts = repository.commitAttempts;
+      repository.failNextCommit();
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(
+        tester,
+        () =>
+            find.byKey(const Key('json-orders-blocked')).evaluate().isNotEmpty,
+      );
+
+      expect(find.text(AppStrings.jsonStorageFailed), findsOneWidget);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(controller.session!.statusOf('ORD-2'), OrderStatus.issued);
+      expect(controller.lastExport!.bytes, bytes);
+      expect(repository.commitAttempts, attempts + 1);
+
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(repository.commitAttempts, attempts + 1);
+
+      await tester.tap(find.byKey(const Key('json-orders-retry')));
+      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+
+      expect(repository.commitAttempts, attempts + 1);
+      expect(controller.revision, revision);
+      expect(controller.phase, FulfilmentUiPhase.ready);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+      expect(controller.session!.statusOf('ORD-2'), OrderStatus.issued);
+      expect(controller.lastExport!.filename, filename);
+      expect(controller.lastExport!.bytes, bytes);
+      expect(
+        find.text('${AppStrings.jsonLastSavedExport} $filename'),
+        findsOneWidget,
+      );
+      expect(_enabled(tester, 'json-create-export'), isTrue);
+      expect(_enabled(tester, 'json-share-export'), isTrue);
+    });
+
+    testWidgets('repeated taps while exporting commit once', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      final attempts = repository.commitAttempts;
+      final revision = controller.revision!;
+      final hold = repository.holdNextCommit();
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await tester.pump();
+      await hold.started;
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await tester.pump();
+
+      expect(repository.commitAttempts, attempts + 1);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(find.text('Експортовано'), findsNothing);
+
+      hold.release();
+      await _until(
+        tester,
+        () => find.text('Експортовано').evaluate().isNotEmpty,
+      );
+
+      expect(repository.commitAttempts, attempts + 1);
+      expect(controller.revision, revision + 1);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+    });
+
+    testWidgets('loading, empty, and blocked phases hide file actions', (
+      tester,
+    ) async {
+      final gated = _GatedRepository();
+      final gate = Completer<void>();
+      gated.loadGate = gate;
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+
+      await _setSize(tester, const Size(1000, 1400));
+      await tester.pumpWidget(_host(gated, child: const JsonOrdersScreen()));
+      await _until(tester, () => gated.loads == 1);
+
+      expect(find.byKey(const Key('json-orders-loading')), findsOneWidget);
+      expect(find.byKey(const Key('json-create-export')), findsNothing);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+
+      gate.complete();
+      await _until(
+        tester,
+        () => find.byKey(const Key('json-orders-empty')).evaluate().isNotEmpty,
+      );
+
+      expect(find.byKey(const Key('json-create-export')), findsNothing);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(find.byKey(const Key('json-last-export-file')), findsNothing);
+
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _commitExport(controller);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      expect(find.byKey(const Key('json-share-export')), findsOneWidget);
+      repository.debugStorageUnavailable(true);
+      await controller.refresh();
+      await tester.pump();
+
+      expect(find.byKey(const Key('json-orders-blocked')), findsOneWidget);
+      expect(find.byKey(const Key('json-create-export')), findsNothing);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(find.byKey(const Key('json-last-export-file')), findsNothing);
+    });
+
+    testWidgets('another tab issuing first does not publish a partial export', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+        await _reserve(controller, 'ORD-2', 1);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.issueOrder('ORD-2'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      final attempts = repository.commitAttempts;
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(
+        tester,
+        () =>
+            find.byKey(const Key('json-orders-blocked')).evaluate().isNotEmpty,
+      );
+
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(controller.lastExport, isNull);
+      expect(repository.commitAttempts, attempts + 1);
+
+      await tester.tap(find.byKey(const Key('json-orders-retry')));
+      await _until(tester, () => find.text('Видано').evaluate().length == 2);
+
+      expect(repository.commitAttempts, attempts + 1);
+      expect(controller.lastExport, isNull);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(controller.session!.statusOf('ORD-2'), OrderStatus.issued);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(_enabled(tester, 'json-create-export'), isTrue);
+    });
+
+    testWidgets('a remote reload that wins does not show a stale conflict', (
+      tester,
+    ) async {
+      final repository = _GatedRepository();
+      final transport = _DeliveringTransport();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+        transport: transport,
+      );
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.cancelIssuance('ORD-1'),
+        isA<FulfilmentCommitted<CancelIssuanceResult>>(),
+      );
+      final attempts = repository.commitAttempts;
+      final loads = repository.loads;
+      final gate = Completer<void>();
+      repository.loadGate = gate;
+      transport.deliver(
+        StorageChangeNotice(
+          revision: '${other.revision}',
+          fingerprint: controller.fingerprint!,
+          senderId: 'remote-tab',
+        ),
+      );
+      await _until(tester, () => repository.loads == loads + 1);
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await tester.pump();
+      gate.complete();
+      await _until(
+        tester,
+        () => find.text(AppStrings.jsonExportUnchanged).evaluate().isNotEmpty,
+      );
+
+      expect(find.text(AppStrings.jsonRevisionConflict), findsNothing);
+      expect(find.byKey(const Key('json-orders-blocked')), findsNothing);
+      expect(controller.phase, FulfilmentUiPhase.ready);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.readyForIssue);
+      expect(controller.lastExport, isNull);
+      expect(repository.commitAttempts, attempts);
+    });
+
+    testWidgets('a failed export does not leave a conflict after reload', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      final transport = _DeliveringTransport();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+        transport: transport,
+      );
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.commitCumulativeExport(
+          now: () => DateTime(2026, 10, 16, 15, 7, 22),
+        ),
+        isA<FulfilmentExported>(),
+      );
+      final bytes = Uint8List.fromList(other.lastExport!.bytes);
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(
+        tester,
+        () =>
+            find.byKey(const Key('json-orders-blocked')).evaluate().isNotEmpty,
+      );
+      final attempts = repository.commitAttempts;
+      transport.deliver(
+        StorageChangeNotice(
+          revision: '${other.revision}',
+          fingerprint: other.fingerprint!,
+          senderId: 'remote-tab',
+        ),
+      );
+      await _until(
+        tester,
+        () => find.text('Експортовано').evaluate().isNotEmpty,
+      );
+
+      expect(find.text(AppStrings.jsonRevisionConflict), findsNothing);
+      expect(find.byKey(const Key('json-orders-blocked')), findsNothing);
+      expect(find.text(AppStrings.jsonExportUnchanged), findsNothing);
+      expect(controller.phase, FulfilmentUiPhase.ready);
+      expect(controller.lastExport!.bytes, bytes);
+      expect(repository.commitAttempts, attempts);
+      expect(_enabled(tester, 'json-share-export'), isTrue);
+    });
+
+    testWidgets('replacing the dataset elsewhere drops the saved file', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _prepare(repository, (controller) async {
+        await _issue(controller, 'ORD-1', 2);
+      });
+      final controller = await _openReady(
+        tester,
+        repository,
+        share: _quietShare().share,
+      );
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.commitCumulativeExport(
+          now: () => DateTime(2026, 10, 16, 15, 7, 22),
+        ),
+        isA<FulfilmentExported>(),
+      );
+      expect(
+        await other.replaceDataset(_replacedBytes()),
+        isA<FulfilmentReplaced>(),
+      );
+      expect(other.lastExport, isNull);
+      final attempts = repository.commitAttempts;
+
+      await tester.tap(find.byKey(const Key('json-create-export')));
+      await _until(
+        tester,
+        () =>
+            find.byKey(const Key('json-orders-blocked')).evaluate().isNotEmpty,
+      );
+      expect(controller.lastExport, isNull);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(repository.commitAttempts, attempts + 1);
+
+      await tester.tap(find.byKey(const Key('json-orders-retry')));
+      await _until(tester, () => find.text('77').evaluate().isNotEmpty);
+
+      expect(repository.commitAttempts, attempts + 1);
+      expect(controller.lastExport, isNull);
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.noSelection);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(find.byKey(const Key('json-last-export-file')), findsNothing);
+      expect(_enabled(tester, 'json-create-export'), isFalse);
+      expect(find.text('Новий Клієнт'), findsOneWidget);
+    });
+
+    testWidgets('legacy excel orders stay on their own screen', (tester) async {
+      await _setSize(tester, const Size(1000, 1400));
+      final repository = InMemorySessionDataRepository();
+      repository.commit(
+        orders: [
+          Order(
+            invoiceDate: DateTime(2026, 10, 3, 11, 46, 18),
+            invoiceNumber: 'ТЕСТ000001',
+            orderNumber: '900000001',
+            customer: 'Клієнт А',
+            customerPhone: '0501112233',
+            items: const [
+              OrderItem(
+                product: 'Секретний товар Альфа',
+                productId: productId,
+                quantity: 2,
+                priceMinorUnits: 1000,
+                amountMinorUnits: 1999,
+              ),
+            ],
+          ),
+        ],
+        inventory: const [],
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: OrdersScreen(
+            store: const Store(
+              nameStore: 'ТВ Тестовий Магазин 1',
+              idStore: '42',
+            ),
+            repository: repository,
+            selections: InMemorySerialSelectionRepository(),
+            exports: InMemoryOrderExportRepository(),
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('json-create-export')), findsNothing);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(find.text(AppStrings.jsonCreateExport), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('900000001')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OrderDetailsScreen), findsOneWidget);
+      expect(find.byKey(const Key('complete-service')), findsOneWidget);
+      expect(find.text(AppStrings.completeService), findsOneWidget);
+      expect(find.byKey(const Key('json-create-export')), findsNothing);
+      expect(find.byKey(const Key('json-share-export')), findsNothing);
+      expect(find.byType(JsonOrdersScreen), findsNothing);
+      expect(find.text(AppStrings.excelFileCreated), findsNothing);
+    });
+  });
 }
 
 const _databaseName = 'retail-offline-json-orders-test';
@@ -748,6 +1708,90 @@ Future<void> _reserve(
   );
 }
 
+Future<void> _prepare(
+  MemoryFulfilmentRepository repository,
+  Future<void> Function(FulfilmentUiController controller) then,
+) async {
+  final controller = FulfilmentUiController.open(
+    repository: repository,
+    databaseName: _databaseName,
+    transport: _Transport(),
+    visibility: _Pages(),
+    senderId: 'json-orders-prepare',
+  );
+  try {
+    for (var attempt = 0; attempt < 30; attempt++) {
+      if (controller.phase == FulfilmentUiPhase.empty) break;
+      await Future<void>.value();
+    }
+    expect(controller.phase, FulfilmentUiPhase.empty);
+    expect(
+      await controller.importDataset(datasetBytes()),
+      isA<FulfilmentImported>(),
+    );
+    await then(controller);
+  } finally {
+    controller.dispose();
+  }
+}
+
+Future<void> _issue(
+  FulfilmentUiController controller,
+  String orderId,
+  int quantity,
+) async {
+  await _reserve(controller, orderId, quantity);
+  expect(
+    await controller.issueOrder(orderId),
+    isA<FulfilmentCommitted<IssueOrderResult>>(),
+  );
+}
+
+Future<void> _commitExport(FulfilmentUiController controller) async {
+  expect(
+    await controller.commitCumulativeExport(
+      now: () => DateTime(2026, 10, 16, 12),
+    ),
+    isA<FulfilmentExported>(),
+  );
+}
+
+Future<FulfilmentUiController> _openReady(
+  WidgetTester tester,
+  MemoryFulfilmentRepository repository, {
+  CumulativeExportShare? share,
+  StorageChangeTransport? transport,
+  Size size = const Size(1000, 1400),
+}) async {
+  await _setSize(tester, size);
+  await tester.pumpWidget(
+    _host(
+      repository,
+      transport: transport,
+      child: JsonOrdersScreen(share: share),
+    ),
+  );
+  await _until(
+    tester,
+    () =>
+        find.byType(JsonOrdersScreen).evaluate().isNotEmpty &&
+        _controllerOf(tester, find.byType(JsonOrdersScreen)).phase ==
+            FulfilmentUiPhase.ready,
+  );
+  return _controllerOf(tester, find.byType(JsonOrdersScreen));
+}
+
+bool _enabled(WidgetTester tester, String key) {
+  return tester.widget<ButtonStyleButton>(find.byKey(Key(key))).onPressed !=
+      null;
+}
+
+_ShareLog _quietShare({
+  ExportShareResult result = const ExportShareHandedOff(),
+}) {
+  return _ShareLog(result);
+}
+
 Future<FulfilmentUiController> _importAndOpen(
   WidgetTester tester,
   MemoryFulfilmentRepository repository,
@@ -793,8 +1837,16 @@ Widget _host(
   FulfilmentRepository repository, {
   Future<PickedBytes?> Function()? picker,
   Widget? child,
+  StorageChangeTransport? transport,
 }) {
-  return _JsonHost(repository: repository, picker: picker, child: child);
+  return _JsonHost(
+    // A new key makes the next pumpWidget read storage with a new controller.
+    key: UniqueKey(),
+    repository: repository,
+    picker: picker,
+    transport: transport,
+    child: child,
+  );
 }
 
 Future<PickedBytes?> Function() _file(String name, Uint8List bytes) {
@@ -869,11 +1921,18 @@ Color? _cardColor(WidgetTester tester, String orderId) {
 }
 
 class _JsonHost extends StatefulWidget {
-  const _JsonHost({required this.repository, this.picker, this.child});
+  const _JsonHost({
+    super.key,
+    required this.repository,
+    this.picker,
+    this.child,
+    this.transport,
+  });
 
   final FulfilmentRepository repository;
   final Future<PickedBytes?> Function()? picker;
   final Widget? child;
+  final StorageChangeTransport? transport;
 
   @override
   State<_JsonHost> createState() => _JsonHostState();
@@ -888,7 +1947,7 @@ class _JsonHostState extends State<_JsonHost> {
     _controller = FulfilmentUiController.open(
       repository: widget.repository,
       databaseName: _databaseName,
-      transport: _Transport(),
+      transport: widget.transport ?? _Transport(),
       visibility: _Pages(),
       senderId: 'json-orders-test',
     );
@@ -948,6 +2007,40 @@ final class _Pages implements PageVisibility {
 
   @override
   void listen(void Function() onResume) {}
+
+  @override
+  void close() {}
+}
+
+final class _ShareLog {
+  _ShareLog(this.result);
+
+  final ExportShareResult result;
+  final List<(String, Uint8List)> calls = [];
+
+  CumulativeExportShare get share => CumulativeExportShare(
+    shareJson: ({required String filename, required Uint8List bytes}) {
+      calls.add((filename, Uint8List.fromList(bytes)));
+      return Future<ExportShareResult>.value(result);
+    },
+  );
+}
+
+final class _DeliveringTransport implements StorageChangeTransport {
+  void Function(StorageChangeNotice notice)? onNotice;
+
+  void deliver(StorageChangeNotice notice) => onNotice?.call(notice);
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  bool publish(StorageChangeNotice notice) => true;
+
+  @override
+  void listen(void Function(StorageChangeNotice notice) onNotice) {
+    this.onNotice = onNotice;
+  }
 
   @override
   void close() {}

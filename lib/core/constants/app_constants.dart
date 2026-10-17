@@ -103,6 +103,12 @@ abstract final class AppStrings {
       'Збережені дані мають непідтримувану версію.';
   static const String jsonRevisionOverflow =
       'Неможливо продовжити: вичерпано номер версії даних.';
+  static const String jsonCreateExport = 'Сформувати JSON-файл';
+  static const String jsonLastSavedExport = 'Останній збережений файл:';
+  static const String jsonExportUnchanged =
+      'Немає нових виданих замовлень для експорту.';
+  static const String jsonExportRejected =
+      'Не вдалося сформувати JSON-файл. Перевірте видані замовлення і спробуйте ще раз.';
 
   // ---- Orders ----
   static const String ordersScreenTitle = 'Замовлення';

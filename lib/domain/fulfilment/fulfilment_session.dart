@@ -498,13 +498,14 @@ class FulfilmentSession {
     );
   }
 
-  /// Replaces the active dataset when no unfinished work remains.
+  /// Replaces the active dataset when every issued order has been exported.
   ///
   /// [next] is validated before the current overlay is consulted. An invalid
   /// dataset, including duplicate stock keys, keeps this session. Otherwise
-  /// replacement is refused while any unissued order still has reservations
-  /// or any issued order is not exported. A service-only issued order blocks
-  /// even though it has no stock units. Exported orders do not block.
+  /// replacement is refused while any issued order is not exported. A
+  /// service-only issued order blocks even though it has no stock units.
+  /// Reservations on an unissued order do not block. Exported orders do not
+  /// block.
   ///
   /// The same rules apply when [next] has the same `dbName`. Success is a
   /// new session with an empty overlay. This session is left intact either
@@ -762,23 +763,17 @@ class FulfilmentSession {
 
   bool _isLocked(String orderId) => _issuedOrderIds.contains(orderId);
 
+  /// Issued orders that have not been exported, in dataset order.
   List<String> _blockingOrderIds() {
     final blocking = <String>[];
     for (final order in dataset.orders) {
       final orderId = order.orderId;
-      if (_exportedOrderIds.contains(orderId)) continue;
-      if (_issuedOrderIds.contains(orderId) || _hasReservation(orderId)) {
+      if (_issuedOrderIds.contains(orderId) &&
+          !_exportedOrderIds.contains(orderId)) {
         blocking.add(orderId);
       }
     }
     return List.unmodifiable(blocking);
-  }
-
-  bool _hasReservation(String orderId) {
-    for (final line in _reservations.keys) {
-      if (line.orderId == orderId) return true;
-    }
-    return false;
   }
 
   FulfilmentSession _add(LineKey line, StockKey stock, int applied) {
@@ -1244,7 +1239,7 @@ final class DatasetReplaced extends ReplaceDatasetResult {
   final FulfilmentSession session;
 }
 
-/// Unfinished orders whose ids follow the current dataset order.
+/// Issued orders that have not been exported, in dataset order.
 final class ReplacementBlocked extends ReplaceDatasetResult {
   const ReplacementBlocked(this.orderIds);
 

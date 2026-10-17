@@ -751,34 +751,144 @@ void main() {
       expect(stored.dataset.dbName, 'Store_01-A');
     });
 
-    test('rejects replacement while an unissued reservation remains', () async {
+    test('replaces a session that still has an unissued reservation', () async {
       final repository = MemoryFulfilmentRepository();
       final app = await imported(repository);
       await reserve(app, quantity: 1);
       final before = app.session!;
+      final revision = app.revision!;
+      final attempts = repository.commitAttempts;
+
+      final result = await app.replaceDataset(
+        catalogue(
+          storeName: 'Інший магазин',
+          dbName: 'Store_02-B',
+          orderId: 'NEW-1',
+        ),
+      );
+
+      expect(result, isA<FulfilmentReplaced>());
+      expect(app.session, isNot(same(before)));
+      expect(app.revision, revision + 1);
+      expect(app.block, isNull);
+      expect(app.lastExport, isNull);
+      expect(reserved(app, 'ORD-1'), 0);
+      expect(app.session!.statusOf('NEW-1'), OrderStatus.noSelection);
+      expect(app.session!.statusOf('ORD-1'), isNull);
+      expect(repository.commitAttempts, attempts + 1);
+
+      final stored = await persisted(repository);
+      expect(stored.revision, revision + 1);
+      expect(stored.export, isNull);
+      expect(reservedSession(stored.session, 'ORD-1'), 0);
+      expect(stored.session.statusOf('NEW-1'), OrderStatus.noSelection);
+    });
+
+    test('a matching confirmed revision permits replacement', () async {
+      final repository = MemoryFulfilmentRepository();
+      final app = await imported(repository);
+      final revision = app.revision!;
+
+      final result = await app.replaceDataset(
+        catalogue(storeName: 'Інший магазин', dbName: 'Store_02-B'),
+        confirmedRevision: revision,
+      );
+
+      expect(result, isA<FulfilmentReplaced>());
+      expect(app.revision, revision + 1);
+      expect(app.session!.dataset.dbName, 'Store_02-B');
+      expect(app.block, isNull);
+    });
+
+    test(
+      'a matching confirmed revision still rejects an unexported issue',
+      () async {
+        final repository = MemoryFulfilmentRepository();
+        final app = await imported(repository);
+        await reserve(app, quantity: 2);
+        await app.issueOrder('ORD-1');
+        final revision = app.revision!;
+        final attempts = repository.commitAttempts;
+
+        final result = await app.replaceDataset(
+          catalogue(storeName: 'Інший магазин', dbName: 'Store_02-B'),
+          confirmedRevision: revision,
+        );
+
+        expect(result, isA<FulfilmentReplacementRejected>());
+        expect(
+          switch ((result as FulfilmentReplacementRejected).result) {
+            ReplacementBlocked(:final orderIds) => orderIds,
+            final other => fail('expected a block, got $other'),
+          },
+          ['ORD-1'],
+        );
+        expect(app.revision, revision);
+        expect(app.block, isNull);
+        expect(app.session!.statusOf('ORD-1'), OrderStatus.issued);
+        expect(repository.commitAttempts, attempts);
+      },
+    );
+
+    test('a stale confirmed revision does not write or block', () async {
+      final repository = MemoryFulfilmentRepository();
+      final app = await imported(repository);
+      await reserve(app, quantity: 1);
+      final revision = app.revision!;
+      final fingerprint = app.fingerprint!;
       final attempts = repository.commitAttempts;
 
       final result = await app.replaceDataset(
         catalogue(storeName: 'Інший магазин', dbName: 'Store_02-B'),
+        confirmedRevision: revision - 1,
       );
 
-      expect(result, isA<FulfilmentReplacementRejected>());
-      expect(
-        switch ((result as FulfilmentReplacementRejected).result) {
-          ReplacementBlocked(:final orderIds) => orderIds,
-          final other => fail('expected a block, got $other'),
-        },
-        ['ORD-1'],
-      );
-      expect(app.session, same(before));
-      expect(app.revision, 2);
+      expect(result, isA<FulfilmentReplacementStale>());
+      expect((result as FulfilmentReplacementStale).revision, revision);
+      expect(app.revision, revision);
+      expect(app.fingerprint, fingerprint);
       expect(app.block, isNull);
+      expect(app.canMutate, isTrue);
+      expect(app.lastExport, isNull);
       expect(reserved(app, 'ORD-1'), 1);
+      expect(app.session!.dataset.storeName, 'Магазин Тест');
       expect(repository.commitAttempts, attempts);
+      expect((await persisted(repository)).revision, revision);
+    });
 
-      final stored = await persisted(repository);
-      expect(stored.revision, 2);
-      expect(reservedSession(stored.session, 'ORD-1'), 1);
+    test('a concurrent issuance conflicts and is not retried', () async {
+      final repository = MemoryFulfilmentRepository();
+      final first = await imported(repository);
+      final second = FulfilmentApplication(repository: repository);
+      expect(await second.load(), isA<LoadReady>());
+      await reserve(first, quantity: 2);
+      expect(
+        await first.issueOrder('ORD-1'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      final attempts = repository.commitAttempts;
+      final next = catalogue(storeName: 'Інший магазин', dbName: 'Store_02-B');
+
+      final conflict = await second.replaceDataset(next);
+
+      expect(conflict, isA<FulfilmentReplacementFailed>());
+      expect(second.block, PersistenceBlock.revisionConflict);
+      expect(second.canMutate, isFalse);
+      expect(first.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(first.session!.dataset.dbName, 'Store_01-A');
+      expect(repository.debugRevision, first.revision);
+
+      final ignored = await second.replaceDataset(next);
+
+      expect(ignored, isA<FulfilmentReplacementBlocked>());
+      expect(repository.commitAttempts, attempts + 1);
+      expect((await persisted(repository)).dataset.storeName, 'Магазин Тест');
+
+      expect(await second.reload(), isA<LoadReady>());
+      expect(second.block, isNull);
+      expect(second.session!.statusOf('ORD-1'), OrderStatus.issued);
+      expect(second.session!.dataset.dbName, 'Store_01-A');
+      expect(second.lastExport, isNull);
     });
 
     test('rejects invalid JSON without writing or blocking', () async {

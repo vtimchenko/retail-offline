@@ -155,10 +155,19 @@ final class FulfilmentUiController extends ChangeNotifier {
 
   /// Replaces the dataset when the phase is [FulfilmentUiPhase.ready].
   ///
-  /// Returns `null` when the command is not dispatched. Otherwise returns
-  /// the application's result unchanged.
-  Future<FulfilmentReplacementResult?> replaceDataset(Uint8List originalBytes) {
-    return _mutate(() => coordinator.application.replaceDataset(originalBytes));
+  /// [confirmedRevision] is forwarded to
+  /// [FulfilmentApplication.replaceDataset]. Returns `null` when the command
+  /// is not dispatched. Otherwise returns the application's result unchanged.
+  Future<FulfilmentReplacementResult?> replaceDataset(
+    Uint8List originalBytes, {
+    int? confirmedRevision,
+  }) {
+    return _mutate(
+      () => coordinator.application.replaceDataset(
+        originalBytes,
+        confirmedRevision: confirmedRevision,
+      ),
+    );
   }
 
   /// Reserves units when the phase is [FulfilmentUiPhase.ready].

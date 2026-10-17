@@ -177,6 +177,58 @@ void main() {
     expect(document.bytes, isNotEmpty);
   });
 
+  test('an aborted replacement keeps the dataset and the export', () async {
+    final bytes = datasetBytes();
+    final handle = await _imported(databaseName, bytes);
+    final document = await storeExport(handle.app);
+    final exportBytes = Uint8List.fromList(document.bytes);
+    final fingerprint = handle.app.fingerprint!;
+    final revision = handle.app.revision!;
+    final snapshot = await IndexedDbProbe(databaseName)
+        .read(IndexedDbFulfilmentSchema.session);
+    handle.repository.abortNextTransaction = true;
+
+    final failed = await handle.app.replaceDataset(
+      datasetBytes(dbName: 'Store_02-B'),
+    );
+
+    expect(failed, isA<FulfilmentReplacementFailed>());
+    expect(handle.app.block, PersistenceBlock.storageFailed);
+    expect(handle.app.revision, revision);
+    expect(handle.app.fingerprint, fingerprint);
+    expect(handle.app.lastExport!.bytes, exportBytes);
+    expect(handle.app.session!.dataset.dbName, 'Store_01-A');
+    expect(handle.app.session!.statusOf('ORD-1'), OrderStatus.exported);
+
+    final restored = await reload(databaseName);
+    expect(restored.revision, revision);
+    expect(restored.fingerprint, fingerprint);
+    expect(restored.lastExport!.bytes, exportBytes);
+    expect(restored.lastExport!.filename, document.filename);
+    expect(restored.session!.dataset.dbName, 'Store_01-A');
+    expect(restored.session!.statusOf('ORD-1'), OrderStatus.exported);
+    expect(reserved(restored), 2);
+
+    final storedDataset = await IndexedDbProbe(databaseName)
+        .read(IndexedDbFulfilmentSchema.dataset);
+    expect(probeBytes(storedDataset!, 'bytes'), bytes);
+    expect(probeText(storedDataset, 'fingerprint'), fingerprint);
+
+    final storedExport = await IndexedDbProbe(databaseName)
+        .read(IndexedDbFulfilmentSchema.exports);
+    expect(probeBytes(storedExport!, 'bytes'), exportBytes);
+    expect(probeText(storedExport, 'filename'), document.filename);
+
+    final metadata = await IndexedDbProbe(databaseName)
+        .read(IndexedDbFulfilmentSchema.metadata);
+    expect(probeText(metadata!, 'revision'), '$revision');
+    expect(probeText(metadata, 'fingerprint'), fingerprint);
+
+    final storedSession = await IndexedDbProbe(databaseName)
+        .read(IndexedDbFulfilmentSchema.session);
+    expect(storedSession!['snapshot'], snapshot!['snapshot']);
+  });
+
   test('a cumulative export restores its exact bytes and digest', () async {
     final handle = await _imported(databaseName, datasetBytes());
     final document = await storeExport(handle.app);

@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../application/fulfilment_application.dart';
 import '../../application/fulfilment_scope.dart';
 import '../../application/fulfilment_ui_controller.dart';
 import '../../core/constants/app_constants.dart';
@@ -7,6 +10,8 @@ import '../../core/format/display_format.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/fulfilment/fulfilment_session.dart';
 import '../../models/retail_dataset.dart';
+import '../../services/file/cumulative_export_share.dart';
+import '../../services/file/export_share.dart';
 import '../../widgets/status_message.dart';
 import '../json_import/fulfilment_block_message.dart';
 import 'dataset_order_search.dart';
@@ -15,11 +20,21 @@ import 'json_order_details_screen.dart';
 /// Lists orders from the current JSON [FulfilmentSession].
 ///
 /// The session is read from [FulfilmentScope] on every build. This screen
-/// does not keep a session or an order list of its own. A row opens
-/// [JsonOrderDetailsScreen] with that row's [DatasetOrder.orderId] only.
+/// does not keep a session, an order list, or export bytes of its own. A row
+/// opens [JsonOrderDetailsScreen] with that row's [DatasetOrder.orderId] only.
+///
+/// **Сформувати JSON-файл** calls [FulfilmentUiController.commitCumulativeExport].
+/// **Поширити файл** shares [FulfilmentUiController.lastExport] through
+/// [share]. The two actions are separate gestures. Share does not wait for
+/// a commit or a storage read.
 class JsonOrdersScreen extends StatefulWidget {
   /// Creates a list bound to the ambient fulfilment controller.
-  const JsonOrdersScreen({super.key});
+  ///
+  /// [share] replaces the production [CumulativeExportShare] in tests.
+  const JsonOrdersScreen({super.key, this.share});
+
+  /// Shares the last committed export. Production uses the browser adapter.
+  final CumulativeExportShare? share;
 
   @override
   State<JsonOrdersScreen> createState() => _JsonOrdersScreenState();
@@ -38,6 +53,9 @@ class _JsonOrdersScreenState extends State<JsonOrdersScreen> {
 
   void _onSearchChanged(String _) => setState(() {});
 
+  CumulativeExportShare get _share =>
+      widget.share ?? const CumulativeExportShare();
+
   /// Reloads storage once. A build does not call this.
   Future<void> _retry() async {
     final controller = FulfilmentScope.read(context);
@@ -46,6 +64,112 @@ class _JsonOrdersScreenState extends State<JsonOrdersScreen> {
     } on Object {
       // operationError is already recorded. The blocked view explains it.
     }
+  }
+
+  /// Commits a cumulative export when the current session still has an
+  /// issued order.
+  ///
+  /// Statuses and [FulfilmentUiController.lastExport] change only after
+  /// [FulfilmentExported]. This does not share the file.
+  Future<void> _export() async {
+    final controller = FulfilmentScope.read(context);
+    if (!_canExport(controller)) return;
+    try {
+      final result = await controller.commitCumulativeExport();
+      if (!mounted) return;
+      _acceptExport(result);
+    } on Object {
+      // operationError is already recorded. The blocked view explains it.
+    }
+  }
+
+  /// Names every export result and leaves the controller session in place.
+  ///
+  /// [FulfilmentScope] has already rebuilt from that session. A blocked
+  /// result observed after a reload restored [FulfilmentUiPhase.ready] does
+  /// not paint a second conflict message.
+  void _acceptExport(FulfilmentExportResult? result) {
+    final phase = FulfilmentScope.read(context).phase;
+    switch (result) {
+      case null:
+      case FulfilmentExportNotReady():
+      case FulfilmentExported():
+        return;
+      case FulfilmentExportUnchanged():
+        _showNotice(
+          AppStrings.jsonExportUnchanged,
+          key: const Key('json-export-unchanged'),
+        );
+      case FulfilmentExportRejected():
+        _showNotice(
+          AppStrings.jsonExportRejected,
+          key: const Key('json-export-rejected'),
+        );
+      case FulfilmentExportBlocked() when phase == FulfilmentUiPhase.ready:
+      case FulfilmentExportFailed() when phase == FulfilmentUiPhase.ready:
+        return;
+      case FulfilmentExportBlocked():
+      case FulfilmentExportFailed():
+        return;
+    }
+  }
+
+  /// Shares the document already stored on the controller.
+  ///
+  /// [CumulativeExportShare.share] runs before this method suspends. There
+  /// is no commit, refresh, or IndexedDB read before that call.
+  void _shareExport() {
+    final document = FulfilmentScope.read(context).lastExport;
+    if (document == null) return;
+    final pending = _share.share(document);
+    unawaited(
+      pending.then<void>(
+        (result) {
+          if (!mounted) return;
+          _acceptShare(result);
+        },
+        onError: (Object error, StackTrace stack) {
+          debugPrint('Share failed: $error\n$stack');
+          if (!mounted) return;
+          _showNotice(
+            AppStrings.excelShareFailed,
+            key: const Key('json-share-failed'),
+          );
+        },
+      ),
+    );
+  }
+
+  void _acceptShare(ExportShareResult result) {
+    switch (result) {
+      case ExportShareHandedOff():
+      case ExportShareDownloadStarted():
+      case ExportShareCancelled():
+      case ExportShareUnavailable():
+        return;
+      case ExportShareFailed():
+        _showNotice(
+          AppStrings.excelShareFailed,
+          key: const Key('json-share-failed'),
+        );
+    }
+  }
+
+  void _showNotice(String message, {required Key key}) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: key,
+        content: Text(message),
+        actions: [
+          TextButton(
+            key: const Key('json-export-notice-ok'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text(AppStrings.dialogOk),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -94,6 +218,8 @@ class _JsonOrdersScreenState extends State<JsonOrdersScreen> {
                     orderNumberController: _orderNumberController,
                     phoneController: _phoneController,
                     onChanged: _onSearchChanged,
+                    onExport: () => unawaited(_export()),
+                    onShare: _shareExport,
                   ),
         },
       ),
@@ -223,6 +349,8 @@ class _ReadyOrders extends StatelessWidget {
     required this.orderNumberController,
     required this.phoneController,
     required this.onChanged,
+    required this.onExport,
+    required this.onShare,
   });
 
   /// Session installed on the controller for this build.
@@ -230,6 +358,8 @@ class _ReadyOrders extends StatelessWidget {
   final TextEditingController orderNumberController;
   final TextEditingController phoneController;
   final ValueChanged<String> onChanged;
+  final VoidCallback onExport;
+  final VoidCallback onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -264,6 +394,12 @@ class _ReadyOrders extends StatelessWidget {
                             ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 16),
+                      _ExportActions(
+                        wide: wide,
+                        onExport: onExport,
+                        onShare: onShare,
+                      ),
+                      const SizedBox(height: 16),
                       _SearchFields(
                         wide: wide,
                         orderNumberController: orderNumberController,
@@ -286,6 +422,90 @@ class _ReadyOrders extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Whether a cumulative export may be sent.
+///
+/// Readiness is an issued [FulfilmentSession.statusOf]. This does not count
+/// reserved units again.
+bool _canExport(FulfilmentUiController controller) {
+  final session = controller.session;
+  if (session == null) return false;
+  if (controller.phase != FulfilmentUiPhase.ready || !controller.canMutate) {
+    return false;
+  }
+  if (controller.commandInFlight || controller.refreshInFlight) return false;
+  for (final order in session.dataset.orders) {
+    if (session.statusOf(order.orderId) == OrderStatus.issued) return true;
+  }
+  return false;
+}
+
+class _ExportActions extends StatelessWidget {
+  const _ExportActions({
+    required this.wide,
+    required this.onExport,
+    required this.onShare,
+  });
+
+  final bool wide;
+  final VoidCallback onExport;
+  final VoidCallback onShare;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = FulfilmentScope.of(context);
+    final document = controller.lastExport;
+    final busy = controller.commandInFlight;
+    final exportButton = FilledButton(
+      key: const Key('json-create-export'),
+      onPressed: _canExport(controller) ? onExport : null,
+      child: busy
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Text(
+              AppStrings.jsonCreateExport,
+              textAlign: TextAlign.center,
+            ),
+    );
+    final shareButton = document == null
+        ? null
+        : OutlinedButton(
+            key: const Key('json-share-export'),
+            onPressed: onShare,
+            child: const Text(
+              AppStrings.shareFile,
+              textAlign: TextAlign.center,
+            ),
+          );
+    final filename = document == null
+        ? null
+        : Text(
+            '${AppStrings.jsonLastSavedExport} ${document.filename}',
+            key: const Key('json-last-export-file'),
+          );
+    final buttons = <Widget>[exportButton, ?shareButton];
+    final stacked = <Widget>[
+      for (var index = 0; index < buttons.length; index++) ...[
+        if (index > 0) const SizedBox(height: 12),
+        buttons[index],
+      ],
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (wide)
+          Wrap(spacing: 12, runSpacing: 12, children: buttons)
+        else
+          ...stacked,
+        if (filename != null) ...[const SizedBox(height: 12), filename],
+      ],
     );
   }
 }

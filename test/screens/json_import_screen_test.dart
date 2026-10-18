@@ -14,63 +14,35 @@ import 'package:retail_offline/core/theme/app_theme.dart';
 import 'package:retail_offline/domain/fulfilment/session_snapshot.dart';
 import 'package:retail_offline/persistence/browser/storage_change_notice.dart';
 import 'package:retail_offline/persistence/fulfilment_repository.dart';
-import 'package:retail_offline/screens/home/home_screen.dart';
 import 'package:retail_offline/screens/json_import/json_import_screen.dart';
-import 'package:retail_offline/screens/json_orders/json_orders_screen.dart';
-import 'package:retail_offline/screens/orders/orders_screen.dart';
-import 'package:retail_offline/screens/store_selection/store_selection_screen.dart';
 import 'package:retail_offline/services/file/json_file_service.dart';
 import 'package:retail_offline/services/file/picked_bytes.dart';
-import 'package:retail_offline/services/store_service.dart';
 
 import '../application/fulfilment_application_test.dart';
 import '../support/memory_fulfilment_repository.dart';
 
 void main() {
   group('JSON import screen', () {
-    testWidgets('opens from store selection and stays under the same scope', (
-      tester,
-    ) async {
+    testWidgets('is the app root under one scope', (tester) async {
       final repository = MemoryFulfilmentRepository();
 
       await tester.pumpWidget(_app(repository));
       await _until(tester, () {
-        if (find.byType(StoreSelectionScreen).evaluate().isEmpty) return false;
-        return FulfilmentScope.read(
-              tester.element(find.byType(StoreSelectionScreen)),
-            ).phase ==
+        if (find.byType(JsonImportScreen).evaluate().isEmpty) return false;
+        return _controllerOf(tester, find.byType(JsonImportScreen)).phase ==
             FulfilmentUiPhase.empty;
       });
 
-      expect(find.byType(StoreSelectionScreen), findsOneWidget);
-      expect(find.text('Новий JSON-режим'), findsOneWidget);
-      final before = _controllerOf(tester, find.byType(StoreSelectionScreen));
-
-      await tester.tap(find.byKey(const Key('json-mode-entry')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-
       expect(find.byType(JsonImportScreen), findsOneWidget);
+      expect(find.byType(FulfilmentScope), findsOneWidget);
+      expect(find.text('Вибір магазину'), findsNothing);
+      expect(find.byKey(const Key('json-mode-entry')), findsNothing);
       expect(find.text('Імпортувати JSON'), findsOneWidget);
+      expect(find.byType(BackButton), findsNothing);
       expect(
-        find.byType(StoreSelectionScreen, skipOffstage: false),
-        findsOneWidget,
+        _controllerOf(tester, find.byType(JsonImportScreen)).canMutate,
+        isFalse,
       );
-      expect(
-        _controllerOf(tester, find.byType(JsonImportScreen)),
-        same(before),
-      );
-
-      expect(find.byType(BackButton), findsOneWidget);
-      await tester.tap(find.byType(BackButton));
-      for (var frame = 0; frame < 15; frame++) {
-        await tester.pump(const Duration(milliseconds: 50));
-        if (find.byType(JsonImportScreen).evaluate().isEmpty) break;
-      }
-
-      expect(find.byType(JsonImportScreen), findsNothing);
-      expect(find.byType(StoreSelectionScreen), findsOneWidget);
-      expect(find.text('Новий JSON-режим'), findsOneWidget);
     });
 
     testWidgets('shows a loading message while saved data is read', (
@@ -357,43 +329,6 @@ void main() {
       _expectDataset(tester);
       expect(repository.commitAttempts, 1);
       expect(find.text('Імпортувати JSON'), findsNothing);
-    });
-
-    testWidgets('the Excel workflow remains available', (tester) async {
-      await tester.pumpWidget(
-        _host(
-          MemoryFulfilmentRepository(),
-          child: StoreSelectionScreen(
-            storeService: StoreService(
-              assetLoader: (_) async =>
-                  '[{"nameStore":"ТВ Тестовий Магазин 1","idStore":"42"}]',
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('Вибір магазину'), findsOneWidget);
-      expect(find.text('Новий JSON-режим'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Продовжити'), findsOneWidget);
-
-      await tester.tap(find.byType(TextField));
-      await tester.enterText(find.byType(TextField), 'тестовий');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('ТВ Тестовий Магазин 1').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Продовжити'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.byType(JsonOrdersScreen), findsNothing);
-      expect(find.byType(OrdersScreen), findsNothing);
-      expect(find.byKey(const Key('json-view-orders')), findsNothing);
-      expect(find.text('ТВ Тестовий Магазин 1'), findsWidgets);
-      expect(find.text('Файл замовлень'), findsOneWidget);
-      expect(find.text('Файл залишків'), findsOneWidget);
-      expect(find.text('Завантажити дані'), findsOneWidget);
-      expect(find.text('Посилання Google Drive'), findsNWidgets(2));
     });
 
     testWidgets('leaving during file selection does not import', (

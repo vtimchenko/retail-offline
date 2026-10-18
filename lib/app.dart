@@ -9,13 +9,13 @@ import 'core/theme/app_theme.dart';
 import 'persistence/fulfilment_repository.dart';
 import 'persistence/indexeddb/indexeddb_fulfilment_repository.dart';
 import 'persistence/indexeddb/indexeddb_fulfilment_schema.dart';
-import 'screens/store_selection/store_selection_screen.dart';
+import 'screens/json_import/json_import_screen.dart';
 
-/// Owns one fulfilment controller for the process and shows store selection.
+/// Owns one fulfilment controller for the process and shows JSON import.
 ///
 /// The controller is created in [State.initState] and disposed with the
 /// state. [FulfilmentScope] sits above [MaterialApp], so pushed routes can
-/// see it. Store selection and the Excel session do not read the controller.
+/// see it.
 class RetailOfflineApp extends StatefulWidget {
   /// Creates the production app.
   ///
@@ -81,7 +81,7 @@ class _RetailOfflineAppState extends State<RetailOfflineApp> {
         title: AppConstants.appName,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
-        home: const StoreSelectionScreen(),
+        home: const JsonImportScreen(),
       ),
     );
   }

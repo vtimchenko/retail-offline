@@ -13,7 +13,7 @@ import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
 import 'package:retail_offline/persistence/browser/storage_change_notice.dart';
 import 'package:retail_offline/persistence/dataset_fingerprint.dart';
 import 'package:retail_offline/persistence/indexeddb/indexeddb_fulfilment_repository.dart';
-import 'package:retail_offline/screens/store_selection/store_selection_screen.dart';
+import 'package:retail_offline/screens/json_import/json_import_screen.dart';
 
 import 'application/fulfilment_application_test.dart';
 import 'persistence/indexeddb_probe.dart';
@@ -53,16 +53,23 @@ void main() {
     await tester.pumpWidget(_app(firstRepository, databaseName));
     await tester.pump();
 
-    expect(find.byType(StoreSelectionScreen), findsOneWidget);
+    expect(find.byType(JsonImportScreen), findsOneWidget);
     expect(find.byType(FulfilmentScope), findsOneWidget);
+    expect(find.byType(BackButton), findsNothing);
+    expect(find.text('Вибір магазину'), findsNothing);
     final first = _controller(tester);
     expect(first.coordinator.application.repository, same(firstRepository));
     expect(first.phase, FulfilmentUiPhase.loading);
+    expect(find.byKey(const Key('json-import-loading')), findsOneWidget);
+    expect(first.canMutate, isFalse);
 
     await _untilPhase(tester, FulfilmentUiPhase.empty);
 
-    expect(find.byType(StoreSelectionScreen), findsOneWidget);
+    expect(find.byType(JsonImportScreen), findsOneWidget);
+    expect(find.text('Імпортувати JSON'), findsOneWidget);
+    expect(find.byType(BackButton), findsNothing);
     expect(first.phase, FulfilmentUiPhase.empty);
+    expect(first.canMutate, isFalse);
     expect(first.session, isNull);
 
     final imported = await tester.runAsync(() => first.importDataset(bytes));
@@ -76,14 +83,17 @@ void main() {
     final firstSession = first.session;
     expect(firstSession, isNotNull);
     expect(firstSession!.dataset.storeName, 'Магазин Тест');
-    expect(find.byType(StoreSelectionScreen), findsOneWidget);
+    expect(find.text('Магазин Тест'), findsOneWidget);
+    expect(find.byKey(const Key('json-view-orders')), findsOneWidget);
+    expect(find.text('Імпортувати JSON'), findsNothing);
+    expect(find.byType(JsonImportScreen), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
 
     expect(first.coordinator.isClosed, isTrue);
     expect(find.byType(RetailOfflineApp), findsNothing);
-    expect(find.byType(StoreSelectionScreen), findsNothing);
+    expect(find.byType(JsonImportScreen), findsNothing);
     expect(find.byType(FulfilmentScope), findsNothing);
 
     final secondRepository = IndexedDbFulfilmentRepository(
@@ -94,7 +104,8 @@ void main() {
     await tester.pumpWidget(_app(secondRepository, databaseName));
     await tester.pump();
 
-    expect(find.byType(StoreSelectionScreen), findsOneWidget);
+    expect(find.byType(JsonImportScreen), findsOneWidget);
+    expect(find.byKey(const Key('json-import-loading')), findsOneWidget);
     final second = _controller(tester);
     expect(second, isNot(same(first)));
     expect(second.coordinator.application.repository, same(secondRepository));
@@ -120,7 +131,14 @@ void main() {
     expect(good.isServiceGood, isFalse);
     expect(good.isParcel, isFalse);
     expect(restored.statusOf('ORD-1'), OrderStatus.noSelection);
-    expect(find.byType(StoreSelectionScreen), findsOneWidget);
+    expect(find.text('Магазин Тест'), findsOneWidget);
+    expect(find.text('Store_01-A'), findsOneWidget);
+    expect(find.byKey(const Key('json-view-orders')), findsOneWidget);
+    expect(find.text('Імпортувати JSON'), findsNothing);
+    expect(find.byType(BackButton), findsNothing);
+    expect(find.text('Вибір магазину'), findsNothing);
+    expect(find.byType(JsonImportScreen), findsOneWidget);
+    expect(second, same(_controller(tester)));
   });
 }
 
@@ -137,9 +155,7 @@ RetailOfflineApp _app(
 }
 
 FulfilmentUiController _controller(WidgetTester tester) {
-  return FulfilmentScope.read(
-    tester.element(find.byType(StoreSelectionScreen)),
-  );
+  return FulfilmentScope.read(tester.element(find.byType(JsonImportScreen)));
 }
 
 /// Waits until IndexedDB settles the controller to [phase].

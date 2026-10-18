@@ -15,21 +15,12 @@ import 'package:retail_offline/core/theme/app_colors.dart';
 import 'package:retail_offline/core/theme/app_theme.dart';
 import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
 import 'package:retail_offline/models/exact_integer.dart';
-import 'package:retail_offline/models/order.dart';
 import 'package:retail_offline/models/retail_dataset.dart';
-import 'package:retail_offline/models/store.dart';
 import 'package:retail_offline/persistence/browser/storage_change_notice.dart';
 import 'package:retail_offline/persistence/fulfilment_repository.dart';
-import 'package:retail_offline/repositories/order_export_repository.dart';
-import 'package:retail_offline/repositories/serial_selection_repository.dart';
-import 'package:retail_offline/repositories/session_data_repository.dart';
-import 'package:retail_offline/screens/home/home_screen.dart';
 import 'package:retail_offline/screens/json_import/json_import_screen.dart';
 import 'package:retail_offline/screens/json_orders/dataset_order_search.dart';
 import 'package:retail_offline/screens/json_orders/json_orders_screen.dart';
-import 'package:retail_offline/screens/orders/order_details_screen.dart';
-import 'package:retail_offline/screens/orders/orders_screen.dart';
-import 'package:retail_offline/screens/store_selection/store_selection_screen.dart';
 import 'package:retail_offline/services/file/cumulative_export_share.dart';
 import 'package:retail_offline/services/file/export_share.dart';
 import 'package:retail_offline/services/file/json_file_service.dart';
@@ -133,8 +124,6 @@ void main() {
         find.byType(JsonImportScreen, skipOffstage: false),
         findsOneWidget,
       );
-      expect(find.byType(OrdersScreen), findsNothing);
-      expect(find.byType(HomeScreen), findsNothing);
       expect(
         _controllerOf(tester, find.byType(JsonOrdersScreen)),
         same(controller),
@@ -155,7 +144,7 @@ void main() {
       expect(find.byType(JsonImportScreen), findsOneWidget);
     });
 
-    testWidgets('stays under store selection and does not replace home', (
+    testWidgets('opens from the app root on the same controller', (
       tester,
     ) async {
       final repository = MemoryFulfilmentRepository();
@@ -163,19 +152,17 @@ void main() {
 
       await tester.pumpWidget(_app(repository));
       await _until(tester, () {
-        if (find.byKey(const Key('json-mode-entry')).evaluate().isEmpty) {
-          return false;
-        }
-        return _controllerOf(tester, find.byType(StoreSelectionScreen)).phase ==
+        if (find.byType(JsonImportScreen).evaluate().isEmpty) return false;
+        return _controllerOf(tester, find.byType(JsonImportScreen)).phase ==
             FulfilmentUiPhase.ready;
       });
-      final before = _controllerOf(tester, find.byType(StoreSelectionScreen));
+      final before = _controllerOf(tester, find.byType(JsonImportScreen));
 
-      await tester.tap(find.byKey(const Key('json-mode-entry')));
-      await _until(
-        tester,
-        () => find.byKey(const Key('json-view-orders')).evaluate().isNotEmpty,
-      );
+      expect(find.text('Вибір магазину'), findsNothing);
+      expect(find.byKey(const Key('json-mode-entry')), findsNothing);
+      expect(find.byType(BackButton), findsNothing);
+      expect(find.byKey(const Key('json-view-orders')), findsOneWidget);
+
       await tester.tap(find.byKey(const Key('json-view-orders')));
       await _until(
         tester,
@@ -183,10 +170,8 @@ void main() {
       );
 
       expect(find.byType(JsonOrdersScreen), findsOneWidget);
-      expect(find.byType(OrdersScreen), findsNothing);
-      expect(find.byType(HomeScreen), findsNothing);
       expect(
-        find.byType(StoreSelectionScreen, skipOffstage: false),
+        find.byType(JsonImportScreen, skipOffstage: false),
         findsOneWidget,
       );
       expect(
@@ -194,6 +179,19 @@ void main() {
         same(before),
       );
       expect(find.text(_largeOrderNumber), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await _until(
+        tester,
+        () => find.byType(JsonOrdersScreen).evaluate().isEmpty,
+      );
+
+      expect(find.byKey(const Key('json-view-orders')), findsOneWidget);
+      expect(find.byType(JsonImportScreen), findsOneWidget);
+      expect(
+        _controllerOf(tester, find.byType(JsonImportScreen)),
+        same(before),
+      );
     });
 
     testWidgets('filters by a partial order number', (tester) async {
@@ -647,7 +645,6 @@ void main() {
       expect(controller.session!.statusOf('ORD-2'), OrderStatus.exported);
       expect(_enabled(tester, 'json-create-export'), isFalse);
       expect(_enabled(tester, 'json-share-export'), isTrue);
-      expect(find.text(AppStrings.excelFileCreated), findsNothing);
       expect(find.text(AppStrings.jsonExportRejected), findsNothing);
     });
 
@@ -807,7 +804,6 @@ void main() {
       expect(controller.revision, revision);
       expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
       expect(find.text(AppStrings.excelShareFailed), findsNothing);
-      expect(find.text(AppStrings.excelFileCreated), findsNothing);
     });
 
     testWidgets('cancelling share stays silent', (tester) async {
@@ -848,7 +844,6 @@ void main() {
 
       expect(log.calls, hasLength(1));
       expect(find.byKey(const Key('json-share-failed')), findsOneWidget);
-      expect(find.text(AppStrings.excelGenerationFailed), findsNothing);
       expect(
         _controllerOf(tester, find.byType(JsonOrdersScreen)).phase,
         FulfilmentUiPhase.ready,
@@ -883,7 +878,6 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text(AppStrings.excelFileCreated), findsNothing);
 
       hold.release();
       await _until(
@@ -1472,64 +1466,6 @@ void main() {
       expect(find.byKey(const Key('json-last-export-file')), findsNothing);
       expect(_enabled(tester, 'json-create-export'), isFalse);
       expect(find.text('Новий Клієнт'), findsOneWidget);
-    });
-
-    testWidgets('legacy excel orders stay on their own screen', (tester) async {
-      await _setSize(tester, const Size(1000, 1400));
-      final repository = InMemorySessionDataRepository();
-      repository.commit(
-        orders: [
-          Order(
-            invoiceDate: DateTime(2026, 10, 3, 11, 46, 18),
-            invoiceNumber: 'ТЕСТ000001',
-            orderNumber: '900000001',
-            customer: 'Клієнт А',
-            customerPhone: '0501112233',
-            items: const [
-              OrderItem(
-                product: 'Секретний товар Альфа',
-                productId: productId,
-                quantity: 2,
-                priceMinorUnits: 1000,
-                amountMinorUnits: 1999,
-              ),
-            ],
-          ),
-        ],
-        inventory: const [],
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light,
-          home: OrdersScreen(
-            store: const Store(
-              nameStore: 'ТВ Тестовий Магазин 1',
-              idStore: '42',
-            ),
-            repository: repository,
-            selections: InMemorySerialSelectionRepository(),
-            exports: InMemoryOrderExportRepository(),
-          ),
-        ),
-      );
-
-      expect(find.byKey(const Key('json-create-export')), findsNothing);
-      expect(find.byKey(const Key('json-share-export')), findsNothing);
-      expect(find.byKey(const Key('json-replace-dataset')), findsNothing);
-      expect(find.text(AppStrings.jsonCreateExport), findsNothing);
-      expect(find.text(AppStrings.jsonReplaceDataset), findsNothing);
-
-      await tester.tap(find.byKey(const ValueKey('900000001')));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(OrderDetailsScreen), findsOneWidget);
-      expect(find.byKey(const Key('complete-service')), findsOneWidget);
-      expect(find.text(AppStrings.completeService), findsOneWidget);
-      expect(find.byKey(const Key('json-create-export')), findsNothing);
-      expect(find.byKey(const Key('json-share-export')), findsNothing);
-      expect(find.byKey(const Key('json-replace-dataset')), findsNothing);
-      expect(find.byType(JsonOrdersScreen), findsNothing);
-      expect(find.text(AppStrings.excelFileCreated), findsNothing);
     });
   });
 }

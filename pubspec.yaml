@@ -41,9 +41,6 @@ dependencies:
   # SHA-256 of the original imported dataset bytes. Pure Dart, so the
   # fingerprint is the same on the web and on the test VM.
   crypto: ^3.0.6
-  http: ^1.6.0
-  archive: ^4.3.0
-  xml: ^7.1.0
 
 dev_dependencies:
   flutter_test:
@@ -68,7 +65,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - stores.json
     - assets/images/
 
   # To add assets to your application, add an assets section, like this:

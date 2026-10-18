@@ -5,8 +5,7 @@ import 'precision_json_decoder.dart';
 
 /// Parses a retail JSON dataset and validates it.
 ///
-/// The result is only a value. This phase does not store it, and it does
-/// not replace the Excel import.
+/// The result is only a value. This parser does not store it.
 class JsonDatasetParser {
   const JsonDatasetParser();
 

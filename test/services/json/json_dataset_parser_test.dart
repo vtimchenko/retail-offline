@@ -8,9 +8,8 @@ import 'package:retail_offline/services/json/json_dataset_parser.dart';
 
 /// Synthetic data only: no real customers, phones or products.
 ///
-/// [bigProductId] is the same 19-digit sample the Excel tests use. It is
-/// outside JavaScript's safe integer range. [overInt64] also exceeds a
-/// 64-bit integer.
+/// [bigProductId] is a 19-digit sample outside JavaScript's safe integer
+/// range. [overInt64] also exceeds a 64-bit integer.
 const bigProductId = '1290564103789190763';
 const bigProductId2 = '1289540227082816241';
 const overInt64 = '9999999999999999999';

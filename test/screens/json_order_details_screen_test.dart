@@ -13,20 +13,12 @@ import 'package:retail_offline/core/constants/app_constants.dart';
 import 'package:retail_offline/core/theme/app_colors.dart';
 import 'package:retail_offline/core/theme/app_theme.dart';
 import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
-import 'package:retail_offline/models/order.dart';
-import 'package:retail_offline/models/store.dart';
 import 'package:retail_offline/persistence/browser/storage_change_notice.dart';
 import 'package:retail_offline/persistence/fulfilment_repository.dart';
-import 'package:retail_offline/repositories/order_export_repository.dart';
-import 'package:retail_offline/repositories/serial_selection_repository.dart';
-import 'package:retail_offline/repositories/session_data_repository.dart';
 import 'package:retail_offline/screens/json_import/json_import_screen.dart';
 import 'package:retail_offline/screens/json_orders/json_order_details_screen.dart';
 import 'package:retail_offline/screens/json_orders/json_orders_screen.dart';
 import 'package:retail_offline/screens/json_orders/json_serial_selection_screen.dart';
-import 'package:retail_offline/screens/orders/order_details_screen.dart';
-import 'package:retail_offline/screens/orders/orders_screen.dart';
-import 'package:retail_offline/screens/orders/serial_selection_screen.dart';
 import 'package:retail_offline/services/file/json_file_service.dart';
 import 'package:retail_offline/services/file/picked_bytes.dart';
 
@@ -65,8 +57,6 @@ void main() {
       );
       expect(find.byType(JsonOrdersScreen), findsOneWidget);
       expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
-      expect(find.byType(OrderDetailsScreen), findsNothing);
-      expect(find.byType(SerialSelectionScreen), findsNothing);
       expect(find.byKey(const Key('json-complete-service')), findsOneWidget);
       expect(find.text('Завершити обслуговування'), findsOneWidget);
       expect(_issueEnabled(tester), isFalse);
@@ -436,7 +426,6 @@ void main() {
         tester.widget<Card>(find.byKey(const Key('json-order-info'))).color,
         AppColors.orderStatusReadyBackground,
       );
-      expect(find.byType(SerialSelectionScreen), findsNothing);
     });
 
     testWidgets('narrow layout stacks goods cards', (tester) async {
@@ -462,7 +451,6 @@ void main() {
         tester.getTopLeft(find.text('Товар Посилка')).dy,
         greaterThan(tester.getTopLeft(find.text('Товар Звичайний')).dy + 40),
       );
-      expect(find.byType(OrderDetailsScreen), findsNothing);
     });
 
     testWidgets('back returns to the filtered orders list', (tester) async {
@@ -1301,68 +1289,6 @@ void main() {
       expect(_issueEnabled(tester), isFalse);
       expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
     });
-  });
-
-  testWidgets('legacy excel orders still open OrderDetailsScreen', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1000, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    final repository = InMemorySessionDataRepository();
-    repository.commit(
-      orders: [
-        Order(
-          invoiceDate: DateTime(2026, 10, 3, 11, 46, 18),
-          invoiceNumber: 'ТЕСТ000001',
-          orderNumber: '900000001',
-          customer: 'Клієнт А',
-          customerPhone: '0501112233',
-          items: const [
-            OrderItem(
-              product: 'Секретний товар Альфа',
-              productId: productId,
-              quantity: 2,
-              priceMinorUnits: 1000,
-              amountMinorUnits: 1999,
-            ),
-          ],
-        ),
-      ],
-      inventory: const [],
-    );
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light,
-        home: OrdersScreen(
-          store: const Store(nameStore: 'ТВ Тестовий Магазин 1', idStore: '42'),
-          repository: repository,
-          selections: InMemorySerialSelectionRepository(),
-          exports: InMemoryOrderExportRepository(),
-        ),
-      ),
-    );
-
-    await tester.tap(find.byKey(const ValueKey('900000001')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(OrderDetailsScreen), findsOneWidget);
-    expect(find.byKey(const Key('complete-service')), findsOneWidget);
-    expect(find.byKey(const Key('json-complete-service')), findsNothing);
-    expect(find.text('Файл Excel успішно сформовано'), findsNothing);
-    expect(find.text('Секретний товар Альфа'), findsOneWidget);
-    expect(find.byType(JsonOrderDetailsScreen), findsNothing);
-    expect(find.byType(JsonOrdersScreen), findsNothing);
-
-    await tester.tap(find.byKey(const ValueKey('order-item-row-0')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(SerialSelectionScreen), findsOneWidget);
-    expect(find.byType(JsonSerialSelectionScreen), findsNothing);
-    expect(find.text('Додати'), findsOneWidget);
-    expect(find.text('Прибрати'), findsOneWidget);
   });
 }
 

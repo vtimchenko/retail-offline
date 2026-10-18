@@ -8,9 +8,6 @@ import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:retail_offline/core/errors/import_exception.dart';
-import 'package:retail_offline/models/imported_file.dart';
-import 'package:retail_offline/services/file/local_file_service.dart';
 import 'package:retail_offline/services/file/xlsx_browser_picker.dart';
 
 /// A stand-in for the OS file chooser. TEST CODE ONLY: it replaces
@@ -191,7 +188,7 @@ void main() {
   final bytes = <int>[0x50, 0x4B, 3, 4, 0, 255, 128, 7];
 
   test('returns the exact file name and bytes', () async {
-    final pick = _Tracker(pickXlsxFromBrowser());
+    final pick = _Tracker(pickJsonFromBrowser());
     chooser.choose(chooser.lastInput, 'Замовлення listOrders.xlsx', bytes);
     await _settle();
 
@@ -203,12 +200,12 @@ void main() {
     expect(pendingPickCount, 0);
   });
 
-  test('the input is an XLSX-only single-file input, clicked at once', () {
-    final pick = pickXlsxFromBrowser();
+  test('the input is a JSON-only single-file input, clicked at once', () {
+    final pick = pickJsonFromBrowser();
     // No await between the call and click(): the click already happened.
     expect(chooser.clicks, hasLength(1));
     final click = chooser.clicks.single;
-    expect(click['accept'], '.xlsx');
+    expect(click['accept'], '.json');
     expect(click['multiple'], isFalse);
     expect(click['args'], 0);
     unawaited(pick);
@@ -233,7 +230,7 @@ void main() {
 
   test('the input stays detached; the DOM is not touched', () async {
     final bodyBefore = _bodyChildren();
-    final pick = _Tracker(pickXlsxFromBrowser());
+    final pick = _Tracker(pickJsonFromBrowser());
     final click = chooser.clicks.single;
     expect(click['connected'], isFalse);
     expect(click['hasParent'], isFalse);
@@ -246,7 +243,7 @@ void main() {
   });
 
   test('is retained and listening BEFORE the chooser opens', () {
-    final pick = pickXlsxFromBrowser();
+    final pick = pickJsonFromBrowser();
     final click = chooser.clicks.single;
     expect(click['pendingAtClick'], isTrue); // retained at click time
     expect(click['listenersAtClick'], 2); // change + cancel
@@ -256,7 +253,7 @@ void main() {
   });
 
   test('the "input" event neither completes nor releases the pick', () async {
-    final pick = _Tracker(pickXlsxFromBrowser());
+    final pick = _Tracker(pickJsonFromBrowser());
     chooser.fire(chooser.lastInput, 'input');
     await _settle();
 
@@ -268,7 +265,7 @@ void main() {
   test(
     'change with a file completes with it and releases everything',
     () async {
-      final pick = _Tracker(pickXlsxFromBrowser());
+      final pick = _Tracker(pickJsonFromBrowser());
       final input = chooser.lastInput;
       chooser.choose(input, 'a.xlsx', bytes);
 
@@ -283,7 +280,7 @@ void main() {
   );
 
   test('change with no file completes with null and releases', () async {
-    final pick = _Tracker(pickXlsxFromBrowser());
+    final pick = _Tracker(pickJsonFromBrowser());
     final input = chooser.lastInput;
     chooser.chooseNothing(input);
     await _settle();
@@ -296,7 +293,7 @@ void main() {
   });
 
   test('native cancel completes with null and releases', () async {
-    final pick = _Tracker(pickXlsxFromBrowser());
+    final pick = _Tracker(pickJsonFromBrowser());
     final input = chooser.lastInput;
     chooser.cancel(input);
     await _settle();
@@ -309,7 +306,7 @@ void main() {
   });
 
   test('a duplicate or late terminal event is ignored', () async {
-    final pick = _Tracker(pickXlsxFromBrowser());
+    final pick = _Tracker(pickJsonFromBrowser());
     final input = chooser.lastInput;
     chooser.cancel(input);
     chooser.cancel(input);
@@ -322,7 +319,7 @@ void main() {
 
   group('no focus heuristic and no timeout', () {
     test('window focus does not cancel the pick', () async {
-      final pick = _Tracker(pickXlsxFromBrowser());
+      final pick = _Tracker(pickJsonFromBrowser());
       chooser.focusWindow();
       await _settle(700); // longer than the old 500 ms heuristic
 
@@ -331,7 +328,7 @@ void main() {
     });
 
     test('focus, then change 800 ms later (iOS Safari timing): file', () async {
-      final pick = _Tracker(pickXlsxFromBrowser());
+      final pick = _Tracker(pickJsonFromBrowser());
       final input = chooser.lastInput;
       chooser.focusWindow();
       await _settle(800);
@@ -344,7 +341,7 @@ void main() {
     });
 
     test('an unanswered chooser stays pending and retained', () async {
-      final pick = _Tracker(pickXlsxFromBrowser());
+      final pick = _Tracker(pickJsonFromBrowser());
       await _settle(1500);
 
       expect(pick.done, isFalse);
@@ -355,16 +352,16 @@ void main() {
 
   test('repeated sequential selections work', () async {
     for (final name in ['orders.xlsx', 'inventory.xlsx', 'again.xlsx']) {
-      final pick = _Tracker(pickXlsxFromBrowser());
+      final pick = _Tracker(pickJsonFromBrowser());
       chooser.choose(chooser.lastInput, name, bytes);
       await _settle();
       expect(pick.value!.name, name);
       expect(pendingPickCount, 0);
     }
     // ...and a cancel followed by a selection.
-    final cancelled = _Tracker(pickXlsxFromBrowser());
+    final cancelled = _Tracker(pickJsonFromBrowser());
     chooser.cancel(chooser.lastInput);
-    final chosen = _Tracker(pickXlsxFromBrowser());
+    final chosen = _Tracker(pickJsonFromBrowser());
     chooser.choose(chooser.lastInput, 'after-cancel.xlsx', bytes);
     await _settle();
     expect(cancelled.value, isNull);
@@ -373,7 +370,7 @@ void main() {
 
   test('a synchronous click() failure cleans up and propagates', () async {
     chooser.throwOnClick = true;
-    final pick = _Tracker(pickXlsxFromBrowser());
+    final pick = _Tracker(pickJsonFromBrowser());
     final input = chooser.lastInput;
     await _settle();
 
@@ -385,14 +382,14 @@ void main() {
 
     // The picker is usable again afterwards.
     chooser.throwOnClick = false;
-    final next = _Tracker(pickXlsxFromBrowser());
+    final next = _Tracker(pickJsonFromBrowser());
     chooser.choose(chooser.lastInput, 'ok.xlsx', bytes);
     await _settle();
     expect(next.value!.name, 'ok.xlsx');
   });
 
   test('a read failure completes with an error and leaves no state', () async {
-    final pick = _Tracker(pickXlsxFromBrowser());
+    final pick = _Tracker(pickJsonFromBrowser());
     final input = chooser.lastInput;
     chooser.failNextRead();
     chooser.choose(input, 'a.xlsx', bytes);
@@ -410,7 +407,7 @@ void main() {
       'pick #2 fails with StateError; pick #1 finishes; pick #3 works',
       () async {
         // 1. Pick #1 starts and stays retained / pending.
-        final first = _Tracker(pickXlsxFromBrowser());
+        final first = _Tracker(pickJsonFromBrowser());
         final firstInput = chooser.lastInput;
         expect(chooser.clicks, hasLength(1));
         expect(pendingPickCount, 1);
@@ -418,7 +415,7 @@ void main() {
         expect(chooser.listenerCount(firstInput), 2);
 
         // 2. Pick #2 creates and clicks nothing.
-        final second = _Tracker(pickXlsxFromBrowser());
+        final second = _Tracker(pickJsonFromBrowser());
         expect(chooser.clicks, hasLength(1));
         expect(chooser.lastInput, same(firstInput));
 
@@ -445,7 +442,7 @@ void main() {
         expect(chooser.listenerCount(firstInput), 0);
 
         // 6. Afterwards a new pick #3 works normally.
-        final third = _Tracker(pickXlsxFromBrowser());
+        final third = _Tracker(pickJsonFromBrowser());
         expect(chooser.clicks, hasLength(2));
         expect(isPendingInput(chooser.lastInput), isTrue);
         chooser.choose(chooser.lastInput, 'third.xlsx', bytes);
@@ -459,9 +456,9 @@ void main() {
     test(
       'pick #1 can still be cancelled normally after a rejected pick #2',
       () async {
-        final first = _Tracker(pickXlsxFromBrowser());
+        final first = _Tracker(pickJsonFromBrowser());
         final firstInput = chooser.lastInput;
-        final second = _Tracker(pickXlsxFromBrowser());
+        final second = _Tracker(pickJsonFromBrowser());
         await _settle();
         expect(second.error, isA<StateError>());
 
@@ -473,47 +470,5 @@ void main() {
         expect(pendingPickCount, 0);
       },
     );
-  });
-
-  group('LocalFileService with its default picker', () {
-    test('returns a local ImportedFile (desktop Chrome path)', () async {
-      final result = Completer<ImportedFile?>();
-      unawaited(const LocalFileService().pickXlsx().then(result.complete));
-      chooser.choose(chooser.lastInput, 'listOrders.xlsx', bytes);
-
-      final file = await result.future;
-      expect(file!.name, 'listOrders.xlsx');
-      expect(file.bytes, orderedEquals(bytes));
-      expect(file.source, FileSource.local);
-    });
-
-    test('cancel is null', () async {
-      final result = Completer<ImportedFile?>();
-      unawaited(const LocalFileService().pickXlsx().then(result.complete));
-      chooser.cancel(chooser.lastInput);
-      expect(await result.future, isNull);
-    });
-
-    test('validation still rejects a wrong extension', () async {
-      final result = const LocalFileService().pickXlsx();
-      final expectation = expectLater(result, throwsA(isA<ImportException>()));
-      chooser.choose(chooser.lastInput, 'orders.csv', bytes);
-      await expectation;
-    });
-
-    test('a picker failure becomes the friendly ImportException', () async {
-      chooser.throwOnClick = true;
-      await expectLater(
-        const LocalFileService().pickXlsx(),
-        throwsA(
-          isA<ImportException>().having(
-            (e) => e.technical,
-            'technical',
-            'Picker failure',
-          ),
-        ),
-      );
-      expect(pendingPickCount, 0);
-    });
   });
 }

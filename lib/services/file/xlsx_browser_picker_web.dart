@@ -6,11 +6,9 @@ import 'package:web/web.dart';
 
 import 'picked_bytes.dart';
 
-/// Lets the user choose one `.xlsx` file with the browser's own file chooser
+/// Lets the user choose one `.json` file with the browser's own file chooser
 /// and returns its name and bytes (in memory only: no paths, no object URLs,
 /// no persistence).
-///
-/// JSON import uses the same chooser through [pickJsonFromBrowser].
 ///
 /// * `change` with a file -> the file; `change` without one, or the native
 ///   `cancel` event -> `null`.
@@ -18,7 +16,7 @@ import 'picked_bytes.dart';
 ///   window-focus/blur/visibility heuristic and no timeout: guessing from
 ///   elapsed time or focus lost real selections on iOS Safari, where `change`
 ///   arrives after the window regains focus.
-/// * Read failures complete with the original error; `LocalFileService` maps
+/// * Read failures complete with the original error; `JsonFileService` maps
 ///   it to its friendly `ImportException`.
 ///
 /// Must be called synchronously from the user's tap (no `await` before it):
@@ -31,10 +29,6 @@ import 'picked_bytes.dart';
 /// clicked), so an internally rejected request is never reported as a user
 /// cancellation and the first pick still finishes through its own
 /// `change`/`cancel` event.
-Future<PickedBytes?> pickXlsxFromBrowser() => _pickFromBrowser('.xlsx');
-
-/// Lets the user choose one `.json` file. The lifecycle matches
-/// [pickXlsxFromBrowser], including the single pending pick.
 Future<PickedBytes?> pickJsonFromBrowser() => _pickFromBrowser('.json');
 
 Future<PickedBytes?> _pickFromBrowser(String accept) {

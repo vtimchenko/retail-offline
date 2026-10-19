@@ -449,7 +449,6 @@ class _ReadySelection extends StatelessWidget {
                     children: [
                       _Summary(
                         good: good,
-                        status: status,
                         reserved: reserved,
                         service: service,
                       ),
@@ -579,13 +578,11 @@ class _ReadySelection extends StatelessWidget {
 class _Summary extends StatelessWidget {
   const _Summary({
     required this.good,
-    required this.status,
     required this.reserved,
     required this.service,
   });
 
   final DatasetGood good;
-  final OrderStatus? status;
   final int reserved;
   final bool service;
 
@@ -596,13 +593,6 @@ class _Summary extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (status != null)
-          Text(
-            status!.label,
-            key: const Key('json-serial-status'),
-            style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-          ),
-        const SizedBox(height: 4),
         Text(
           good.product,
           key: const Key('json-serial-product'),
@@ -610,27 +600,13 @@ class _Summary extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
-        const SizedBox(height: 4),
-        Text(
-          AppStrings.productIdLabel,
-          style: textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
-        ),
-        Text(
-          good.productId.literal,
-          key: const Key('json-serial-product-id'),
-          style: textTheme.bodyLarge,
-        ),
         if (good.isParcel && parcelTtn != null) ...[
           const SizedBox(height: 4),
           Text(
             AppStrings.parcelGoodLabel,
             style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
-          Text(
-            '${AppStrings.parcelTtnLabel}: $parcelTtn',
-            key: const Key('json-serial-parcel'),
-            style: textTheme.bodyLarge,
-          ),
+          _SerialTrackingNumbers(good: good, parcelTtn: parcelTtn),
         ],
         const SizedBox(height: 4),
         if (service)
@@ -639,20 +615,51 @@ class _Summary extends StatelessWidget {
             key: const Key('json-serial-service'),
             style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           )
-        else ...[
-          Text(
-            '${AppStrings.requiredQuantityLabel}: ${good.quantity}',
-            key: const Key('json-serial-required'),
-          ),
+        else
           Text(
             AppStrings.selectedOfRequired(reserved, good.quantity),
             key: const Key('json-serial-progress'),
+            style: textTheme.bodyMedium?.copyWith(
+              color: _selectedQuantityColor(
+                reserved: reserved,
+                requiredQuantity: good.quantity,
+              ),
+              fontWeight: FontWeight.w600,
+            ),
           ),
+      ],
+    );
+  }
+}
+
+class _SerialTrackingNumbers extends StatelessWidget {
+  const _SerialTrackingNumbers({required this.good, required this.parcelTtn});
+
+  final DatasetGood good;
+  final String parcelTtn;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyLarge;
+    final meestTtn = good.meestTtn;
+    final showMeest =
+        good.isParcel && meestTtn != null && meestTtn.trim().isNotEmpty;
+    return Wrap(
+      spacing: 16,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          '${AppStrings.parcelTtnLabel}: $parcelTtn',
+          key: const Key('json-serial-parcel'),
+          style: style,
+        ),
+        if (showMeest)
           Text(
-            '${AppStrings.remainingQuantityLabel}: ${good.quantity - reserved}',
-            key: const Key('json-serial-remaining'),
+            '${AppStrings.meestTtnLabel}: $meestTtn',
+            key: const Key('json-serial-meest'),
+            style: style,
           ),
-        ],
       ],
     );
   }
@@ -867,26 +874,44 @@ class _StockColumns extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget cell(String text, int flex, {Key? key}) => Expanded(
+    Widget cell(
+      String text,
+      int flex, {
+      Key? key,
+      required int lines,
+      required double gap,
+    }) => Expanded(
       flex: flex,
-      child: Text(
-        text,
-        key: key,
-        style: style,
-        maxLines: maxLines,
-        overflow: TextOverflow.ellipsis,
+      child: Padding(
+        padding: EdgeInsets.only(right: gap),
+        child: Text(
+          text,
+          key: key,
+          style: style,
+          maxLines: lines,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
     );
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        cell(address, 3),
-        cell(serialNumber, 4),
-        cell(quantity, 2, key: quantityKey),
+        cell(address, 3, lines: 2, gap: AppConstants.tableColumnGap),
+        cell(serialNumber, 4, lines: 2, gap: AppConstants.tableColumnGap),
+        cell(quantity, 2, key: quantityKey, lines: maxLines, gap: 0),
       ],
     );
   }
+}
+
+Color _selectedQuantityColor({
+  required int reserved,
+  required int requiredQuantity,
+}) {
+  if (reserved <= 0) return AppColors.textSecondary;
+  if (reserved >= requiredQuantity) return AppColors.primaryDark;
+  return AppColors.orderStatusInProgressForeground;
 }
 
 class _StockField extends StatelessWidget {
@@ -910,7 +935,13 @@ class _StockField extends StatelessWidget {
               color: AppColors.textSecondary,
             ),
           ),
-          Text(valueText, key: valueKey, style: textTheme.bodyLarge),
+          Text(
+            valueText,
+            key: valueKey,
+            style: textTheme.bodyLarge,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );

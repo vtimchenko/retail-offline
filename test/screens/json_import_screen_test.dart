@@ -10,7 +10,9 @@ import 'package:retail_offline/application/fulfilment_scope.dart';
 import 'package:retail_offline/application/fulfilment_tab_coordinator.dart';
 import 'package:retail_offline/application/fulfilment_ui_controller.dart';
 import 'package:retail_offline/application/page_visibility.dart';
+import 'package:retail_offline/core/constants/app_constants.dart';
 import 'package:retail_offline/core/theme/app_theme.dart';
+import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
 import 'package:retail_offline/domain/fulfilment/session_snapshot.dart';
 import 'package:retail_offline/persistence/browser/storage_change_notice.dart';
 import 'package:retail_offline/persistence/fulfilment_repository.dart';
@@ -35,6 +37,8 @@ void main() {
 
       expect(find.byType(JsonImportScreen), findsOneWidget);
       expect(find.byType(FulfilmentScope), findsOneWidget);
+      expect(find.text(AppStrings.jsonScreenTitle), findsOneWidget);
+      expect(find.text('JSON-режим'), findsNothing);
       expect(find.text('Вибір магазину'), findsNothing);
       expect(find.byKey(const Key('json-mode-entry')), findsNothing);
       expect(find.text('Імпортувати JSON'), findsOneWidget);
@@ -104,13 +108,100 @@ void main() {
       );
 
       _expectDataset(tester);
+      _expectReadyHierarchy(tester);
       expect(find.text('Імпортувати JSON'), findsNothing);
       expect(find.byKey(const Key('json-import-error')), findsNothing);
       final controller = _controllerOf(tester, find.byType(JsonImportScreen));
       expect(controller.phase, FulfilmentUiPhase.ready);
       expect(controller.session!.dataset.orders, hasLength(2));
+      expect(controller.session!.dataset.dbName, 'Store_01-A');
       expect(repository.commitAttempts, 1);
       expect(repository.debugRevision, 1);
+    });
+
+    testWidgets('issued count follows issued and exported orders', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await tester.pumpWidget(
+        _host(repository, picker: _file('dataset.json', datasetBytes())),
+      );
+      await _untilPhase(tester, FulfilmentUiPhase.empty);
+      await tester.tap(find.byKey(const Key('json-import-button')));
+      await _until(
+        tester,
+        () => find.byKey(const Key('json-issued-count')).evaluate().isNotEmpty,
+      );
+      final controller = _controllerOf(tester, find.byType(JsonImportScreen));
+      expect(
+        tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
+        '0',
+      );
+
+      expect(
+        await controller.reserve(
+          orderId: 'ORD-1',
+          productId: productId,
+          address: address,
+          serialNumber: serial,
+          quantity: 2,
+        ),
+        isA<FulfilmentCommitted<ReserveResult>>(),
+      );
+      expect(
+        await controller.issueOrder('ORD-1'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
+        '1',
+      );
+
+      expect(
+        await controller.commitCumulativeExport(
+          now: () => DateTime(2026, 10, 16, 12),
+        ),
+        isA<FulfilmentExported>(),
+      );
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
+        '1',
+      );
+      expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
+
+      expect(
+        await controller.reserve(
+          orderId: 'ORD-2',
+          productId: productId,
+          address: address,
+          serialNumber: serial,
+          quantity: 1,
+        ),
+        isA<FulfilmentCommitted<ReserveResult>>(),
+      );
+      expect(
+        await controller.issueOrder('ORD-2'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
+        '2',
+      );
+      expect(controller.session!.statusOf('ORD-2'), OrderStatus.issued);
+
+      expect(await controller.refresh(), isA<LoadReady>());
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
+        '2',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const Key('json-order-count'))).data,
+        '2',
+      );
     });
 
     testWidgets('shows a restored session without asking to import again', (
@@ -309,6 +400,17 @@ void main() {
 
       expect(find.text('Імпорт JSON…'), findsOneWidget);
       expect(_importEnabled(tester), isFalse);
+      expect(
+        tester
+            .widget<CircularProgressIndicator>(
+              find.descendant(
+                of: find.byKey(const Key('json-import-progress')),
+                matching: find.byType(CircularProgressIndicator),
+              ),
+            )
+            .color,
+        Colors.white,
+      );
       expect(repository.commitAttempts, 1);
 
       await tester.tap(find.byKey(const Key('json-import-button')));
@@ -403,16 +505,48 @@ Future<PickedBytes?> Function() _file(String name, Uint8List bytes) {
   return () async => (name: name, bytes: bytes);
 }
 
+void _expectReadyHierarchy(WidgetTester tester) {
+  final storeSize = tester
+      .widget<Text>(find.byKey(const Key('json-store-name')))
+      .style
+      ?.fontSize;
+  final countSize = tester
+      .widget<Text>(find.byKey(const Key('json-order-count')))
+      .style
+      ?.fontSize;
+  final issuedSize = tester
+      .widget<Text>(find.byKey(const Key('json-issued-count')))
+      .style
+      ?.fontSize;
+  expect(storeSize, isNotNull);
+  expect(countSize, isNotNull);
+  expect(issuedSize, countSize);
+  expect(storeSize!, greaterThan(countSize!));
+  expect(find.byKey(const Key('json-db-name')), findsNothing);
+  expect(find.text(AppStrings.jsonDbNameLabel), findsNothing);
+  expect(
+    tester.getTopLeft(find.byKey(const Key('json-order-count'))).dy,
+    tester.getTopLeft(find.byKey(const Key('json-issued-count'))).dy,
+  );
+  expect(
+    tester.getTopLeft(find.byKey(const Key('json-view-orders'))).dy,
+    lessThan(
+      tester.getTopLeft(find.byKey(const Key('json-replace-dataset'))).dy,
+    ),
+  );
+  expect(
+    tester.getSize(find.byKey(const Key('json-replace-dataset'))).height,
+    greaterThanOrEqualTo(52),
+  );
+}
+
 void _expectDataset(WidgetTester tester) {
   expect(find.byKey(const Key('json-store-name')), findsOneWidget);
   expect(
     tester.widget<Text>(find.byKey(const Key('json-store-name'))).data,
     'Магазин Тест',
   );
-  expect(
-    tester.widget<Text>(find.byKey(const Key('json-db-name'))).data,
-    'Store_01-A',
-  );
+  expect(find.byKey(const Key('json-db-name')), findsNothing);
   expect(
     tester.widget<Text>(find.byKey(const Key('json-date-create'))).data,
     '03.10.2026 11:46',
@@ -420,6 +554,10 @@ void _expectDataset(WidgetTester tester) {
   expect(
     tester.widget<Text>(find.byKey(const Key('json-order-count'))).data,
     '2',
+  );
+  expect(
+    tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
+    '0',
   );
 }
 

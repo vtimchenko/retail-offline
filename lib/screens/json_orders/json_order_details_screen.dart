@@ -40,7 +40,9 @@ class JsonOrderDetailsScreen extends StatelessWidget {
         ? session.dataset.storeName
         : AppStrings.ordersScreenTitle;
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
       body: SafeArea(
         child: switch (controller.phase) {
           FulfilmentUiPhase.loading => const _LoadingBody(),
@@ -137,6 +139,20 @@ void _acceptIssue(
 ///
 /// Readiness is [FulfilmentSession.statusOf]. This does not count reserved
 /// units again.
+/// Explains a disabled **Завершити обслуговування** from the current status.
+///
+/// A ready order, a missing session, and an unknown status stay silent.
+/// The caller also hides this while an issuance command is running.
+String? _disabledIssueExplanation(FulfilmentSession? session, String orderId) {
+  return switch (session?.statusOf(orderId)) {
+    OrderStatus.noSelection ||
+    OrderStatus.inProgress => AppStrings.completeServiceNotReady,
+    OrderStatus.issued => AppStrings.completeServiceIssued,
+    OrderStatus.exported => AppStrings.completeServiceExported,
+    OrderStatus.readyForIssue || null => null,
+  };
+}
+
 bool _canIssue(
   FulfilmentUiController controller,
   FulfilmentSession? session,
@@ -451,17 +467,42 @@ class _CompleteServiceButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = FulfilmentScope.of(context);
     final busy = controller.commandInFlight;
-    final enabled = _canIssue(controller, controller.session, orderId);
-    return FilledButton(
-      key: const Key('json-complete-service'),
-      onPressed: enabled ? () => unawaited(_issue(context, orderId)) : null,
-      child: busy
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Text(AppStrings.completeService, textAlign: TextAlign.center),
+    final session = controller.session;
+    final enabled = _canIssue(controller, session, orderId);
+    final explanation = busy
+        ? null
+        : _disabledIssueExplanation(session, orderId);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FilledButton(
+          key: const Key('json-complete-service'),
+          onPressed: enabled ? () => unawaited(_issue(context, orderId)) : null,
+          child: busy
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text(
+                  AppStrings.completeService,
+                  textAlign: TextAlign.center,
+                ),
+        ),
+        if (explanation != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            explanation,
+            key: const Key('json-complete-service-hint'),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(color: AppColors.textSecondary),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -489,36 +530,40 @@ class _OrderInfoCard extends StatelessWidget {
               status: status,
             ),
             const SizedBox(height: 8),
-            _DetailField(
-              AppStrings.invoiceDateLabel,
-              DisplayFormat.formatInvoiceDate(order.invoiceDate),
-              valueKey: const Key('json-order-date'),
+            Text(
+              AppStrings.accountLine(
+                order.invoiceNumber,
+                DisplayFormat.formatInvoiceDate(order.invoiceDate),
+              ),
+              key: const Key('json-invoice-line'),
+              style: Theme.of(context).textTheme.bodyLarge,
             ),
-            _DetailField(
-              AppStrings.invoiceNumberLabel,
-              order.invoiceNumber,
-              valueKey: const Key('json-invoice-number'),
-            ),
-            _DetailField(
-              AppStrings.orderNumberLabel,
+            const SizedBox(height: 8),
+            Text(
               order.orderNumber.literal,
-              valueKey: const Key('json-order-number'),
+              key: const Key('json-order-number'),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
-            _DetailField(
-              AppStrings.customerLabel,
-              order.customer,
-              valueKey: const Key('json-customer'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  order.customer,
+                  key: const Key('json-customer'),
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                Text(
+                  DisplayFormat.formatPhone(order.customerPhone),
+                  key: const Key('json-customer-phone'),
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ],
             ),
-            _DetailField(
-              AppStrings.customerPhoneLabel,
-              order.customerPhone,
-              valueKey: const Key('json-customer-phone'),
-            ),
-            _DetailField(
-              AppStrings.jsonStoreNameLabel,
-              session.dataset.storeName,
-              valueKey: const Key('json-store-name'),
-            ),
+            const SizedBox(height: 8),
             _DetailField(
               AppStrings.orderTotalLabel,
               DisplayFormat.formatMoney(order.totalMinorUnits),
@@ -529,6 +574,92 @@ class _OrderInfoCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TrackingNumbers extends StatelessWidget {
+  const _TrackingNumbers({required this.good, required this.parcelTtn});
+
+  final DatasetGood good;
+  final String parcelTtn;
+
+  @override
+  Widget build(BuildContext context) {
+    final meestTtn = _visibleMeestTtn(good);
+    return Wrap(
+      spacing: 24,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _TrackingItem(
+          AppStrings.parcelTtnLabel,
+          parcelTtn,
+          ValueKey('json-parcel-ttn-${good.productId.literal}'),
+        ),
+        if (meestTtn != null)
+          _TrackingItem(
+            AppStrings.meestTtnLabel,
+            meestTtn,
+            ValueKey('json-meest-ttn-${good.productId.literal}'),
+          ),
+      ],
+    );
+  }
+}
+
+class _TrackingItem extends StatelessWidget {
+  const _TrackingItem(this.label, this.value, this.valueKey);
+
+  final String label;
+  final String value;
+  final Key valueKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final labelStyle = textTheme.bodySmall?.copyWith(
+      color: AppColors.textSecondary,
+    );
+    final valueStyle = textTheme.bodyLarge;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final sideBySide =
+            _textWidth(label, labelStyle) + 8 + _textWidth(value, valueStyle) <=
+            constraints.maxWidth;
+        final labelText = Text(label, style: labelStyle);
+        final valueText = Text(value, key: valueKey, style: valueStyle);
+        if (sideBySide) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [labelText, const SizedBox(width: 8), valueText],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [labelText, valueText],
+        );
+      },
+    );
+  }
+}
+
+double _textWidth(String text, TextStyle? style) {
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+  )..layout();
+  final width = painter.width;
+  painter.dispose();
+  return width;
+}
+
+String? _visibleMeestTtn(DatasetGood good) {
+  if (!good.isParcel) return null;
+  final value = good.meestTtn;
+  if (value == null || value.trim().isEmpty) return null;
+  return value;
 }
 
 class _DetailField extends StatelessWidget {
@@ -613,25 +744,35 @@ class _GoodRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = Theme.of(context).textTheme.bodyMedium;
+    final parcelTtn = good.parcelTtn;
     final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
-      child: _GoodColumns(
-        product: _GoodFacts(good: good, progress: progress),
-        quantity: Text(
-          '${good.quantity}',
-          key: ValueKey('json-good-quantity-${good.productId.literal}'),
-          style: style,
-        ),
-        price: Text(
-          DisplayFormat.formatMoney(good.priceMinorUnits),
-          key: ValueKey('json-good-price-${good.productId.literal}'),
-          style: style,
-        ),
-        amount: Text(
-          DisplayFormat.formatMoney(good.amountMinorUnits),
-          key: ValueKey('json-good-amount-${good.productId.literal}'),
-          style: style,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _GoodColumns(
+            product: _GoodFacts(good: good, progress: progress),
+            quantity: Text(
+              '${good.quantity}',
+              key: ValueKey('json-good-quantity-${good.productId.literal}'),
+              style: style,
+            ),
+            price: Text(
+              DisplayFormat.formatMoney(good.priceMinorUnits),
+              key: ValueKey('json-good-price-${good.productId.literal}'),
+              style: style,
+            ),
+            amount: Text(
+              DisplayFormat.formatMoney(good.amountMinorUnits),
+              key: ValueKey('json-good-amount-${good.productId.literal}'),
+              style: style,
+            ),
+          ),
+          if (good.isParcel && parcelTtn != null) ...[
+            const SizedBox(height: 4),
+            _TrackingNumbers(good: good, parcelTtn: parcelTtn),
+          ],
+        ],
       ),
     );
     final open = onOpen;
@@ -657,27 +798,19 @@ class _GoodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final parcelTtn = good.parcelTtn;
     final body = Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _GoodFacts(good: good, progress: progress),
-          _DetailField(
-            AppStrings.quantityLabel,
-            '${good.quantity}',
-            valueKey: ValueKey('json-good-quantity-${good.productId.literal}'),
-          ),
-          _DetailField(
-            AppStrings.priceLabel,
-            DisplayFormat.formatMoney(good.priceMinorUnits),
-            valueKey: ValueKey('json-good-price-${good.productId.literal}'),
-          ),
-          _DetailField(
-            AppStrings.amountLabel,
-            DisplayFormat.formatMoney(good.amountMinorUnits),
-            valueKey: ValueKey('json-good-amount-${good.productId.literal}'),
-          ),
+          if (good.isParcel && parcelTtn != null) ...[
+            const SizedBox(height: 8),
+            _TrackingNumbers(good: good, parcelTtn: parcelTtn),
+          ],
+          const SizedBox(height: 8),
+          _GoodFigures(good: good),
         ],
       ),
     );
@@ -709,13 +842,81 @@ class _GoodColumns extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Widget column(Widget child, int flex, {required bool gap}) {
+      return Expanded(
+        flex: flex,
+        child: Padding(
+          padding: EdgeInsets.only(
+            right: gap ? AppConstants.tableColumnGap : 0,
+          ),
+          child: child,
+        ),
+      );
+    }
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(flex: 4, child: product),
-        Expanded(flex: 2, child: quantity),
-        Expanded(flex: 2, child: price),
-        Expanded(flex: 2, child: amount),
+        column(product, 4, gap: true),
+        column(quantity, 2, gap: true),
+        column(price, 2, gap: true),
+        column(amount, 2, gap: false),
+      ],
+    );
+  }
+}
+
+class _GoodFigures extends StatelessWidget {
+  const _GoodFigures({required this.good});
+
+  final DatasetGood good;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 16,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _Figure(
+          AppStrings.quantityLabel,
+          '${good.quantity}',
+          ValueKey('json-good-quantity-${good.productId.literal}'),
+        ),
+        _Figure(
+          AppStrings.priceLabel,
+          DisplayFormat.formatMoney(good.priceMinorUnits),
+          ValueKey('json-good-price-${good.productId.literal}'),
+        ),
+        _Figure(
+          AppStrings.amountLabel,
+          DisplayFormat.formatMoney(good.amountMinorUnits),
+          ValueKey('json-good-amount-${good.productId.literal}'),
+        ),
+      ],
+    );
+  }
+}
+
+class _Figure extends StatelessWidget {
+  const _Figure(this.label, this.value, this.valueKey);
+
+  final String label;
+  final String value;
+  final Key valueKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
+        ),
+        const SizedBox(width: 6),
+        Text(value, key: valueKey, style: textTheme.bodyLarge),
       ],
     );
   }
@@ -735,21 +936,10 @@ class _GoodFacts extends StatelessWidget {
         : good.isParcel
         ? AppStrings.parcelGoodLabel
         : null;
-    final parcelTtn = good.parcelTtn;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(good.product, style: textTheme.bodyLarge),
-        const SizedBox(height: 4),
-        Text(
-          AppStrings.productIdLabel,
-          style: textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
-        ),
-        Text(
-          good.productId.literal,
-          key: ValueKey('json-product-id-${good.productId.literal}'),
-          style: textTheme.bodyMedium,
-        ),
         if (kind != null) ...[
           const SizedBox(height: 4),
           Text(
@@ -762,12 +952,6 @@ class _GoodFacts extends StatelessWidget {
             style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
         ],
-        if (good.isParcel && parcelTtn != null)
-          _DetailField(
-            AppStrings.parcelTtnLabel,
-            parcelTtn,
-            valueKey: ValueKey('json-parcel-ttn-${good.productId.literal}'),
-          ),
         const SizedBox(height: 4),
         _LineProgressView(good: good, progress: progress),
       ],
@@ -783,9 +967,7 @@ class _LineProgressView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = progress.ready
-        ? AppColors.primaryDark
-        : AppColors.textSecondary;
+    final color = _lineProgressColor(progress);
     final label = progress.service
         ? AppStrings.serviceLineProgress
         : AppStrings.selectedOfRequired(
@@ -845,6 +1027,15 @@ class _LineProgress {
 
   /// Whether [DatasetGood.isServiceGood] is set.
   final bool service;
+}
+
+/// Green when the line is complete or is a service good, amber when some
+/// units are selected, and secondary when nothing is selected yet.
+Color _lineProgressColor(_LineProgress progress) {
+  if (progress.service || progress.ready) return AppColors.primaryDark;
+  final reserved = progress.reservedQuantity ?? 0;
+  if (reserved > 0) return AppColors.orderStatusInProgressForeground;
+  return AppColors.textSecondary;
 }
 
 _LineProgress _lineProgress(

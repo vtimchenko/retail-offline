@@ -29,8 +29,6 @@ const _largeOrderNumber = '9007199254740993';
 const _parcelId = '1290564103789190999';
 const _serviceId = '1290564103789190888';
 const _parcelTtn = 'TTN-PARCEL-1';
-const _formattedPhone = '+38 (067) 123-45-67';
-
 void main() {
   group('JSON order details', () {
     testWidgets('opens one order by OrderID and shows its header', (
@@ -60,6 +58,7 @@ void main() {
       expect(find.byKey(const Key('json-complete-service')), findsOneWidget);
       expect(find.text('Завершити обслуговування'), findsOneWidget);
       expect(_issueEnabled(tester), isFalse);
+      expect(find.text(AppStrings.completeServiceNotReady), findsOneWidget);
       expect(find.text('Поширити файл'), findsNothing);
       expect(find.text('Додати'), findsNothing);
       expect(find.text('Прибрати'), findsNothing);
@@ -83,12 +82,8 @@ void main() {
         isNull,
       );
       expect(
-        _text(tester, find.byKey(const Key('json-invoice-number'))),
-        'ТЕСТ000001',
-      );
-      expect(
-        _text(tester, find.byKey(const Key('json-order-date'))),
-        '03.10.2026 11:46',
+        _text(tester, find.byKey(const Key('json-invoice-line'))),
+        'Рахунок №ТЕСТ000001 від 03.10.2026 11:46',
       );
       expect(
         _text(tester, find.byKey(const Key('json-customer'))),
@@ -96,13 +91,10 @@ void main() {
       );
       expect(
         _text(tester, find.byKey(const Key('json-customer-phone'))),
-        '0501112233',
+        '(050) 111-22-33',
       );
-      expect(
-        _text(tester, find.byKey(const Key('json-store-name'))),
-        'Магазин Тест',
-      );
-      expect(_onDetails(find.text('Магазин Тест')), findsNWidgets(2));
+      expect(find.byKey(const Key('json-store-name')), findsNothing);
+      expect(_onDetails(find.text('Магазин Тест')), findsOneWidget);
       expect(_onDetails(find.text('Без вибору')), findsOneWidget);
       expect(find.text('Готово'), findsNothing);
       expect(find.text('Файл сформовано'), findsNothing);
@@ -120,16 +112,8 @@ void main() {
       expect(good.priceMinorUnits, 32450);
       expect(good.amountMinorUnits, 64900);
       expect(good.productId.literal, productId);
-      expect(
-        _text(tester, find.byKey(ValueKey('json-product-id-$productId'))),
-        productId,
-      );
-      expect(
-        tester
-            .widget<Text>(find.byKey(ValueKey('json-product-id-$productId')))
-            .maxLines,
-        isNull,
-      );
+      expect(find.byKey(ValueKey('json-product-id-$productId')), findsNothing);
+      expect(_onDetails(find.text(AppStrings.productIdLabel)), findsNothing);
       expect(
         _text(tester, find.byKey(ValueKey('json-good-quantity-$productId'))),
         '2',
@@ -156,6 +140,10 @@ void main() {
       expect(find.text('Послуга'), findsNothing);
       expect(find.text('Обрано 0 з 2'), findsOneWidget);
       expect(
+        tester.widget<Text>(find.text('Обрано 0 з 2')).style?.color,
+        AppColors.textSecondary,
+      );
+      expect(
         find.byKey(ValueKey('json-good-progress-$productId')),
         findsOneWidget,
       );
@@ -180,12 +168,6 @@ void main() {
             .getTopLeft(find.byKey(ValueKey('json-good-price-$productId')))
             .dy,
       );
-      expect(
-        tester
-            .getTopLeft(find.byKey(ValueKey('json-product-id-$productId')))
-            .dy,
-        greaterThan(tester.getTopLeft(find.text('Тестовий товар 1')).dy),
-      );
     });
 
     testWidgets('duplicate order numbers open the tapped OrderID', (
@@ -209,12 +191,12 @@ void main() {
         'Клієнт Формат',
       );
       expect(
-        _text(tester, find.byKey(const Key('json-invoice-number'))),
-        'INV-ORD-A',
+        _text(tester, find.byKey(const Key('json-invoice-line'))),
+        'Рахунок №INV-ORD-A від 03.10.2026 11:46',
       );
       expect(
         _text(tester, find.byKey(const Key('json-customer-phone'))),
-        _formattedPhone,
+        '(067) 123-45-67',
       );
       expect(_onDetails(find.text('Клієнт Цифри')), findsNothing);
       expect(find.text('Товар Посилка'), findsOneWidget);
@@ -240,8 +222,8 @@ void main() {
         'Клієнт Цифри',
       );
       expect(
-        _text(tester, find.byKey(const Key('json-invoice-number'))),
-        'INV-ORD-B',
+        _text(tester, find.byKey(const Key('json-invoice-line'))),
+        'Рахунок №INV-ORD-B від 03.10.2026 11:46',
       );
       expect(_onDetails(find.text('Клієнт Формат')), findsNothing);
       expect(_onDetails(find.text('Товар Посилка')), findsNothing);
@@ -280,13 +262,27 @@ void main() {
         _parcelTtn,
       );
       expect(
-        _text(tester, find.byKey(ValueKey('json-product-id-$_parcelId'))),
-        _parcelId,
+        _text(tester, find.byKey(ValueKey('json-meest-ttn-$_parcelId'))),
+        '000123',
       );
       expect(
-        _text(tester, find.byKey(ValueKey('json-product-id-$_serviceId'))),
-        _serviceId,
+        tester.getTopLeft(find.byKey(ValueKey('json-meest-ttn-$_parcelId'))).dy,
+        tester
+            .getTopLeft(find.byKey(ValueKey('json-parcel-ttn-$_parcelId')))
+            .dy,
       );
+      expect(
+        controller.session!.dataset.orders
+            .firstWhere((order) => order.orderId == 'ORD-A')
+            .goods
+            .firstWhere((good) => good.isParcel)
+            .meestTtn,
+        '000123',
+      );
+      expect(find.byKey(ValueKey('json-meest-ttn-$productId')), findsNothing);
+      expect(find.byKey(ValueKey('json-meest-ttn-$_serviceId')), findsNothing);
+      expect(find.byKey(ValueKey('json-product-id-$_parcelId')), findsNothing);
+      expect(find.byKey(ValueKey('json-product-id-$_serviceId')), findsNothing);
       expect(
         _text(tester, find.byKey(ValueKey('json-good-amount-$productId'))),
         '19,99',
@@ -347,6 +343,10 @@ void main() {
 
       expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
       expect(find.text('Обрано 1 з 2'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.text('Обрано 1 з 2')).style?.color,
+        AppColors.orderStatusInProgressForeground,
+      );
       expect(find.text('Обрано 0 з 2'), findsNothing);
       expect(find.text('Обрано 0 з 1'), findsOneWidget);
       expect(find.text('Не потребує вибору'), findsOneWidget);
@@ -392,6 +392,14 @@ void main() {
 
       expect(find.text('Обрано 2 з 2'), findsOneWidget);
       expect(
+        tester.widget<Text>(find.text('Обрано 2 з 2')).style?.color,
+        AppColors.primaryDark,
+      );
+      expect(
+        tester.widget<Text>(find.text('Не потребує вибору')).style?.color,
+        AppColors.primaryDark,
+      );
+      expect(
         find.byKey(ValueKey('json-good-ready-$productId')),
         findsOneWidget,
       );
@@ -428,6 +436,125 @@ void main() {
       );
     });
 
+    testWidgets('a parsed parcel shows ParcelTTN and MeestTTN together', (
+      tester,
+    ) async {
+      const parcel = '20450123456789';
+      const meest = '00012345678901';
+      final bytes = _parcelTrackingBytes(parcelTtn: parcel, meestTtn: meest);
+
+      for (final size in const [Size(1100, 900), Size(360, 800)]) {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        final repository = MemoryFulfilmentRepository();
+        final controller = await _importAndOpen(
+          tester,
+          repository,
+          bytes,
+          size: size,
+        );
+        final good = controller.session!.dataset.orders.single.goods.single;
+        expect(good.isParcel, isTrue);
+        expect(good.productId.literal, _parcelId);
+        expect(good.parcelTtn, parcel);
+        expect(good.meestTtn, meest);
+        final loaded = await repository.load();
+        expect(loaded, isA<LoadReady>());
+        expect(
+          (loaded as LoadReady)
+              .state
+              .dataset
+              .orders
+              .single
+              .goods
+              .single
+              .meestTtn,
+          meest,
+        );
+
+        await _open(tester, 'ORD-P');
+        expect(tester.takeException(), isNull);
+        expect(
+          _text(tester, find.byKey(ValueKey('json-parcel-ttn-$_parcelId'))),
+          parcel,
+        );
+        expect(
+          _text(tester, find.byKey(ValueKey('json-meest-ttn-$_parcelId'))),
+          meest,
+        );
+        final parcelRect = tester.getRect(
+          find.byKey(ValueKey('json-parcel-ttn-$_parcelId')),
+        );
+        final meestRect = tester.getRect(
+          find.byKey(ValueKey('json-meest-ttn-$_parcelId')),
+        );
+        expect(parcelRect.width, greaterThan(8));
+        expect(meestRect.width, greaterThan(8));
+        expect(meestRect.height, greaterThan(8));
+        final quantity = tester.getRect(
+          find.byKey(ValueKey('json-good-quantity-$_parcelId')),
+        );
+        final coversQuantity =
+            meestRect.right > quantity.left + 1 &&
+            meestRect.top < quantity.bottom &&
+            meestRect.bottom > quantity.top;
+        expect(
+          coversQuantity,
+          isFalse,
+          reason: 'Meest TTN is covered at ${size.width}',
+        );
+        if (size.width >= 1100) {
+          expect(meestRect.left, greaterThan(parcelRect.right));
+          expect(meestRect.top, parcelRect.top);
+        }
+
+        await tester.tap(find.byKey(ValueKey('json-good-open-$_parcelId')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.text('ТТН посилки: $parcel'), findsOneWidget);
+        expect(find.text('Meest ТТН: $meest'), findsOneWidget);
+        final serialParcel = tester.getRect(find.text('ТТН посилки: $parcel'));
+        final serialMeest = tester.getRect(find.text('Meest ТТН: $meest'));
+        expect(serialParcel.width, greaterThan(8));
+        expect(serialMeest.width, greaterThan(8));
+        if (size.width >= 1100) {
+          expect(serialMeest.left, greaterThan(serialParcel.right));
+          expect(serialMeest.top, serialParcel.top);
+        }
+        expect(tester.takeException(), isNull);
+      }
+    });
+
+    testWidgets('hides Meest TTN when the parsed field is missing or blank', (
+      tester,
+    ) async {
+      for (final meest in const <String?>[null, '']) {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        final bytes = _parcelTrackingBytes(
+          parcelTtn: '20450123456789',
+          meestTtn: meest,
+        );
+        final controller = await _importAndOpen(
+          tester,
+          MemoryFulfilmentRepository(),
+          bytes,
+        );
+        expect(
+          controller.session!.dataset.orders.single.goods.single.meestTtn,
+          meest == null ? isNull : isEmpty,
+        );
+        await _open(tester, 'ORD-P');
+        expect(
+          _text(tester, find.byKey(ValueKey('json-parcel-ttn-$_parcelId'))),
+          '20450123456789',
+        );
+        expect(find.byKey(ValueKey('json-meest-ttn-$_parcelId')), findsNothing);
+        expect(_onDetails(find.text(AppStrings.meestTtnLabel)), findsNothing);
+        expect(tester.takeException(), isNull);
+      }
+    });
+
     testWidgets('narrow layout stacks goods cards', (tester) async {
       await _importAndOpen(
         tester,
@@ -444,9 +571,14 @@ void main() {
       expect(find.text('Посилка'), findsOneWidget);
       expect(find.text('Послуга'), findsOneWidget);
       expect(
-        _text(tester, find.byKey(ValueKey('json-product-id-$productId'))),
-        productId,
+        _text(tester, find.byKey(ValueKey('json-parcel-ttn-$_parcelId'))),
+        _parcelTtn,
       );
+      expect(
+        _text(tester, find.byKey(ValueKey('json-meest-ttn-$_parcelId'))),
+        '000123',
+      );
+      expect(find.byKey(ValueKey('json-product-id-$productId')), findsNothing);
       expect(
         tester.getTopLeft(find.text('Товар Посилка')).dy,
         greaterThan(tester.getTopLeft(find.text('Товар Звичайний')).dy + 40),
@@ -577,8 +709,8 @@ void main() {
         'Новий Клієнт',
       );
       expect(
-        _text(tester, find.byKey(const Key('json-invoice-number'))),
-        'ТЕСТ000099',
+        _text(tester, find.byKey(const Key('json-invoice-line'))),
+        'Рахунок №ТЕСТ000099 від 03.10.2026 11:46',
       );
       expect(
         _text(tester, find.byKey(const Key('json-order-number'))),
@@ -790,6 +922,7 @@ void main() {
       expect(controller.session!.statusOf('ORD-1'), OrderStatus.readyForIssue);
       expect(_onDetails(find.text('Готово до видачі')), findsOneWidget);
       expect(_issueEnabled(tester), isTrue);
+      expect(find.byKey(const Key('json-complete-service-hint')), findsNothing);
       expect(reserved, 2);
 
       final attempts = repository.commitAttempts;
@@ -799,15 +932,20 @@ void main() {
       await hold.started;
 
       expect(_onDetails(find.text('Готово до видачі')), findsOneWidget);
-      expect(find.text('Видано'), findsNothing);
+      expect(_onDetails(find.text('Видано')), findsNothing);
       expect(_issueEnabled(tester), isFalse);
       expect(
-        find.descendant(
-          of: find.byKey(const Key('json-complete-service')),
-          matching: find.byType(CircularProgressIndicator),
-        ),
-        findsOneWidget,
+        tester
+            .widget<CircularProgressIndicator>(
+              find.descendant(
+                of: find.byKey(const Key('json-complete-service')),
+                matching: find.byType(CircularProgressIndicator),
+              ),
+            )
+            .color,
+        Colors.white,
       );
+      expect(find.byKey(const Key('json-complete-service-hint')), findsNothing);
       expect(controller.session!.statusOf('ORD-1'), OrderStatus.readyForIssue);
       expect(
         controller.session!.lineReservedQuantity(
@@ -818,10 +956,14 @@ void main() {
       );
 
       hold.release();
-      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+      await _until(
+        tester,
+        () => _onDetails(find.text('Видано')).evaluate().isNotEmpty,
+      );
 
       expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
       expect(_onDetails(find.text('Видано')), findsOneWidget);
+      expect(find.text(AppStrings.completeServiceIssued), findsOneWidget);
       expect(find.text('Готово до видачі'), findsNothing);
       expect(find.text('Файл Excel успішно сформовано'), findsNothing);
       expect(find.text('Поширити файл'), findsNothing);
@@ -870,7 +1012,7 @@ void main() {
 
       expect(repository.commitAttempts, attempts);
       expect(_onDetails(find.text('В процесі')), findsOneWidget);
-      expect(find.text('Видано'), findsNothing);
+      expect(_onDetails(find.text('Видано')), findsNothing);
     });
 
     testWidgets('a service-only order issues without a reservation', (
@@ -906,7 +1048,10 @@ void main() {
       expect(_issueEnabled(tester), isTrue);
 
       await tester.tap(find.byKey(const Key('json-complete-service')));
-      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+      await _until(
+        tester,
+        () => _onDetails(find.text('Видано')).evaluate().isNotEmpty,
+      );
 
       expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
       expect(controller.revision, revision + 1);
@@ -945,6 +1090,12 @@ void main() {
       expect(controller.session!.statusOf('ORD-P'), OrderStatus.noSelection);
       expect(find.text('Обрано 0 з 2'), findsOneWidget);
       expect(find.text('Посилка'), findsOneWidget);
+      expect(
+        _text(tester, find.byKey(ValueKey('json-parcel-ttn-$_parcelId'))),
+        _parcelTtn,
+      );
+      expect(find.byKey(ValueKey('json-meest-ttn-$_parcelId')), findsNothing);
+      expect(_onDetails(find.text(AppStrings.meestTtnLabel)), findsNothing);
       expect(_issueEnabled(tester), isFalse);
 
       expect(
@@ -984,7 +1135,10 @@ void main() {
         productId: _parcelId,
       );
       await tester.tap(find.byKey(const Key('json-complete-service')));
-      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+      await _until(
+        tester,
+        () => _onDetails(find.text('Видано')).evaluate().isNotEmpty,
+      );
 
       expect(controller.session!.statusOf('ORD-P'), OrderStatus.issued);
       expect(
@@ -1008,6 +1162,7 @@ void main() {
       expect(find.text('Поширити файл'), findsNothing);
       expect(find.byKey(const Key('json-complete-service')), findsOneWidget);
       expect(_issueEnabled(tester), isFalse);
+      expect(find.text(AppStrings.completeServiceIssued), findsOneWidget);
       expect(
         controller.session!.lineReservedQuantity(
           orderId: 'ORD-1',
@@ -1036,6 +1191,7 @@ void main() {
       expect(find.text('Файл Excel успішно сформовано'), findsNothing);
       expect(find.byKey(const Key('json-complete-service')), findsOneWidget);
       expect(_issueEnabled(tester), isFalse);
+      expect(find.text(AppStrings.completeServiceExported), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('json-complete-service')));
       await tester.pump();
@@ -1106,7 +1262,10 @@ void main() {
           senderId: 'remote-tab',
         ),
       );
-      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+      await _until(
+        tester,
+        () => _onDetails(find.text('Видано')).evaluate().isNotEmpty,
+      );
 
       expect(repository.commitAttempts, afterIssue);
       expect(_onDetails(find.text('Видано')), findsOneWidget);
@@ -1149,7 +1308,7 @@ void main() {
       expect(find.text('Роботу призупинено'), findsOneWidget);
       expect(find.byKey(const Key('json-order-details')), findsNothing);
       expect(find.byKey(const Key('json-complete-service')), findsNothing);
-      expect(find.text('Видано'), findsNothing);
+      expect(_onDetails(find.text('Видано')), findsNothing);
       expect(controller.phase, FulfilmentUiPhase.blocked);
       expect(controller.block, PersistenceBlock.revisionConflict);
       expect(repository.commitAttempts, attempts + 1);
@@ -1158,7 +1317,10 @@ void main() {
       expect(repository.commitAttempts, attempts + 1);
 
       await tester.tap(find.byKey(const Key('json-order-details-retry')));
-      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+      await _until(
+        tester,
+        () => _onDetails(find.text('Видано')).evaluate().isNotEmpty,
+      );
 
       expect(find.byKey(const Key('json-order-details-blocked')), findsNothing);
       expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
@@ -1212,7 +1374,10 @@ void main() {
       await tester.tap(find.byKey(const Key('json-complete-service')));
       await tester.pump();
       gate.complete();
-      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+      await _until(
+        tester,
+        () => _onDetails(find.text('Видано')).evaluate().isNotEmpty,
+      );
 
       expect(find.byKey(const Key('json-order-details-blocked')), findsNothing);
       expect(find.text(AppStrings.jsonRevisionConflict), findsNothing);
@@ -1243,7 +1408,7 @@ void main() {
       expect(find.text(AppStrings.jsonStorageFailed), findsOneWidget);
       expect(find.byKey(const Key('json-order-details')), findsNothing);
       expect(find.byKey(const Key('json-order-details-retry')), findsOneWidget);
-      expect(find.text('Видано'), findsNothing);
+      expect(_onDetails(find.text('Видано')), findsNothing);
       expect(repository.commitAttempts, attempts + 1);
 
       await tester.pump(const Duration(milliseconds: 50));
@@ -1279,10 +1444,13 @@ void main() {
       await tester.pump();
 
       expect(repository.commitAttempts, attempts + 1);
-      expect(find.text('Видано'), findsNothing);
+      expect(_onDetails(find.text('Видано')), findsNothing);
 
       hold.release();
-      await _until(tester, () => find.text('Видано').evaluate().isNotEmpty);
+      await _until(
+        tester,
+        () => _onDetails(find.text('Видано')).evaluate().isNotEmpty,
+      );
 
       expect(repository.commitAttempts, attempts + 1);
       expect(controller.revision, revision + 1);
@@ -1307,10 +1475,10 @@ Uint8List _mixBytes() {
       '"Customer":"Клієнт Формат","CustomerPhone":"+38 (067) 123-45-67",'
       '"Goods":[{"Product":"Товар Звичайний","ProductID":1290564103789190763,'
       '"Quantity":2,"Price":10.00,"Amount":19.99,"isServiceGood":0,'
-      '"isParcel":0},{"Product":"Товар Посилка",'
+      '"isParcel":0,"MeestTTN":"SHOULD-NOT-SHOW"},{"Product":"Товар Посилка",'
       '"ProductID":1290564103789190999,"Quantity":1,"Price":50.00,'
       '"Amount":50.00,"isServiceGood":0,"isParcel":1,'
-      '"ParcelTTN":"TTN-PARCEL-1"},{"Product":"Товар Послуга",'
+      '"ParcelTTN":"TTN-PARCEL-1","MeestTTN":"000123"},{"Product":"Товар Послуга",'
       '"ProductID":1290564103789190888,"Quantity":1,"Price":15.00,'
       '"Amount":15.00,"isServiceGood":1,"isParcel":0}]},'
       '{"OrderID":"ORD-B","InvoiceDate":"20261003114618",'
@@ -1682,6 +1850,23 @@ Uint8List _serviceOnlyBytes() {
   return Uint8List.fromList(utf8.encode(json));
 }
 
+Uint8List _parcelTrackingBytes({
+  required String parcelTtn,
+  required String? meestTtn,
+}) {
+  final meest = meestTtn == null ? '' : ',"MeestTTN":"$meestTtn"';
+  final json =
+      '{"storeName":"Магазин Тест","dbName":"Store_01-A",'
+      '"dateCreate":"20261003114618","stocks":[{"Address":"A-02",'
+      '"ProductID":$_parcelId,"SerialNumber":"$parcelTtn","Quantity":1}],'
+      '"orders":[{"OrderID":"ORD-P","InvoiceDate":"20261003114618",'
+      '"InvoiceNumber":"INV-P","OrderNumber":8,"Customer":"Клієнт Посилка",'
+      '"CustomerPhone":"0501112233","Goods":[{"Product":"Товар Посилка",'
+      '"ProductID":$_parcelId,"Quantity":1,"Price":50.00,"Amount":50.00,'
+      '"isServiceGood":0,"isParcel":1,"ParcelTTN":"$parcelTtn"$meest}]}]}';
+  return Uint8List.fromList(utf8.encode(json));
+}
+
 Uint8List _parcelOrderBytes() {
   const json =
       '{"storeName":"Магазин Тест","dbName":"Store_01-A",'
@@ -1693,6 +1878,6 @@ Uint8List _parcelOrderBytes() {
       '"CustomerPhone":"0501112233","Goods":[{"Product":"Товар Посилка",'
       '"ProductID":1290564103789190999,"Quantity":2,"Price":50.00,'
       '"Amount":100.00,"isServiceGood":0,"isParcel":1,'
-      '"ParcelTTN":"TTN-PARCEL-1"}]}]}';
+      '"ParcelTTN":"TTN-PARCEL-1","MeestTTN":""}]}]}';
   return Uint8List.fromList(utf8.encode(json));
 }

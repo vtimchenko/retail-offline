@@ -34,6 +34,7 @@ abstract final class AppStrings {
   static const String jsonDateCreateLabel = 'Дата створення';
   static const String jsonOrdersLabel = 'Замовлень';
   static const String jsonIssuedCountLabel = 'Видано';
+  static const String jsonIssuedAmountLabel = 'На суму';
 
   static String ordersWithStore(String storeName) =>
       '$ordersScreenTitle — $storeName';

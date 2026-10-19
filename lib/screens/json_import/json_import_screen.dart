@@ -12,6 +12,7 @@ import '../../core/errors/import_exception.dart';
 import '../../core/format/display_format.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/fulfilment/fulfilment_session.dart';
+import '../../models/retail_dataset.dart';
 import '../../services/file/json_file_service.dart';
 import '../../widgets/centered_content.dart';
 import '../json_orders/json_orders_screen.dart';
@@ -319,10 +320,10 @@ class _ReadyBody extends StatelessWidget {
   }
 }
 
-/// Orders in the dataset, and orders already issued or exported.
+/// Orders in the dataset, issued orders, and their order-level total.
 ///
-/// Exported orders stay in the issued total. The count is derived on each
-/// build from [FulfilmentSession.statusOf] and is not stored.
+/// Exported orders stay in the issued figures. Both figures are derived on
+/// each build from [FulfilmentSession.statusOf] and are not stored.
 class _DatasetCounters extends StatelessWidget {
   const _DatasetCounters({required this.session});
 
@@ -337,27 +338,31 @@ class _DatasetCounters extends StatelessWidget {
     final labelStyle = textTheme.bodySmall?.copyWith(
       color: AppColors.textSecondary,
     );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Wrap(
+      spacing: 24,
+      runSpacing: 12,
+      crossAxisAlignment: WrapCrossAlignment.start,
       children: [
-        Expanded(
-          child: _Counter(
-            label: AppStrings.jsonOrdersLabel,
-            value: session.dataset.orders.length.toString(),
-            valueKey: const Key('json-order-count'),
-            valueStyle: valueStyle,
-            labelStyle: labelStyle,
-          ),
+        _Counter(
+          label: AppStrings.jsonOrdersLabel,
+          value: session.dataset.orders.length.toString(),
+          valueKey: const Key('json-order-count'),
+          valueStyle: valueStyle,
+          labelStyle: labelStyle,
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _Counter(
-            label: AppStrings.jsonIssuedCountLabel,
-            value: _issuedOrderCount(session).toString(),
-            valueKey: const Key('json-issued-count'),
-            valueStyle: valueStyle,
-            labelStyle: labelStyle,
-          ),
+        _Counter(
+          label: AppStrings.jsonIssuedCountLabel,
+          value: _issuedOrderCount(session).toString(),
+          valueKey: const Key('json-issued-count'),
+          valueStyle: valueStyle,
+          labelStyle: labelStyle,
+        ),
+        _Counter(
+          label: AppStrings.jsonIssuedAmountLabel,
+          value: _formatIssuedAmount(session),
+          valueKey: const Key('json-issued-amount'),
+          valueStyle: valueStyle,
+          labelStyle: labelStyle,
         ),
       ],
     );
@@ -394,18 +399,32 @@ class _Counter extends StatelessWidget {
 int _issuedOrderCount(FulfilmentSession session) {
   var issued = 0;
   for (final order in session.dataset.orders) {
-    switch (session.statusOf(order.orderId)) {
-      case OrderStatus.issued:
-      case OrderStatus.exported:
-        issued++;
-      case OrderStatus.noSelection:
-      case OrderStatus.inProgress:
-      case OrderStatus.readyForIssue:
-      case null:
-        break;
-    }
+    if (_countsAsIssued(session.statusOf(order.orderId))) issued++;
   }
   return issued;
+}
+
+/// Sum of [DatasetOrder.totalMinorUnits] for issued and exported orders.
+///
+/// Each total is the parsed order amount in kopecks. The sum uses integer
+/// addition and widens to [BigInt] before it could pass
+/// [DatasetLimits.maxSafeMinorUnits], so the displayed amount stays exact.
+String _formatIssuedAmount(FulfilmentSession session) {
+  var total = BigInt.zero;
+  for (final order in session.dataset.orders) {
+    if (!_countsAsIssued(session.statusOf(order.orderId))) continue;
+    total += BigInt.from(order.totalMinorUnits);
+  }
+  if (total <= BigInt.from(DatasetLimits.maxSafeMinorUnits)) {
+    return DisplayFormat.formatMoney(total.toInt());
+  }
+  final whole = total ~/ BigInt.from(100);
+  final fraction = (total % BigInt.from(100)).toString().padLeft(2, '0');
+  return '$whole,$fraction';
+}
+
+bool _countsAsIssued(OrderStatus? status) {
+  return status == OrderStatus.issued || status == OrderStatus.exported;
 }
 
 class _MetaLine extends StatelessWidget {

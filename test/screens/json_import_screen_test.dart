@@ -137,6 +137,7 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
         '0',
       );
+      expect(_issuedAmount(tester), '0,00');
 
       expect(
         await controller.reserve(
@@ -157,6 +158,7 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
         '1',
       );
+      expect(_issuedAmount(tester), '649,00');
 
       expect(
         await controller.commitCumulativeExport(
@@ -169,6 +171,7 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
         '1',
       );
+      expect(_issuedAmount(tester), '649,00');
       expect(controller.session!.statusOf('ORD-1'), OrderStatus.exported);
 
       expect(
@@ -181,6 +184,8 @@ void main() {
         ),
         isA<FulfilmentCommitted<ReserveResult>>(),
       );
+      await tester.pump();
+      expect(_issuedAmount(tester), '649,00');
       expect(
         await controller.issueOrder('ORD-2'),
         isA<FulfilmentCommitted<IssueOrderResult>>(),
@@ -190,6 +195,7 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
         '2',
       );
+      expect(_issuedAmount(tester), '973,50');
       expect(controller.session!.statusOf('ORD-2'), OrderStatus.issued);
 
       expect(await controller.refresh(), isA<LoadReady>());
@@ -198,10 +204,134 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
         '2',
       );
+      expect(_issuedAmount(tester), '973,50');
       expect(
         tester.widget<Text>(find.byKey(const Key('json-order-count'))).data,
         '2',
       );
+    });
+
+    testWidgets('issued amount adds order totals in kopecks', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await tester.pumpWidget(
+        _host(repository, picker: _file('dataset.json', _precisionBytes())),
+      );
+      await _untilPhase(tester, FulfilmentUiPhase.empty);
+      await tester.tap(find.byKey(const Key('json-import-button')));
+      await _until(
+        tester,
+        () => find.byKey(const Key('json-issued-amount')).evaluate().isNotEmpty,
+      );
+      final controller = _controllerOf(tester, find.byType(JsonImportScreen));
+      expect(find.text(AppStrings.jsonOrdersLabel), findsOneWidget);
+      expect(find.text(AppStrings.jsonIssuedCountLabel), findsOneWidget);
+      expect(find.text(AppStrings.jsonIssuedAmountLabel), findsOneWidget);
+      expect(_issuedAmount(tester), '0,00');
+      expect(
+        controller.session!.dataset.orders
+            .firstWhere((order) => order.orderId == 'ORD-R')
+            .totalMinorUnits,
+        1999,
+      );
+
+      expect(
+        await controller.issueOrder('ORD-R'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      await tester.pump();
+      expect(_issuedAmount(tester), '19,99');
+
+      expect(
+        await controller.issueOrder('ORD-P'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      await tester.pump();
+      expect(_issuedAmount(tester), '20,09');
+      expect(controller.session!.statusOf('ORD-Q'), isNot(OrderStatus.issued));
+
+      expect(
+        await controller.issueOrder('ORD-Q'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      await tester.pump();
+      expect(_issuedAmount(tester), '20,29');
+      expect(
+        tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
+        '3',
+      );
+
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(_issuedAmount(tester), '20,29');
+      for (final key in const [
+        'json-order-count',
+        'json-issued-count',
+        'json-issued-amount',
+      ]) {
+        final rect = tester.getRect(find.byKey(Key(key)));
+        expect(rect.width, greaterThan(8));
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(360));
+      }
+    });
+
+    testWidgets('issued amount follows a remote tab and a restore', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      final transport = _NotifyingTransport();
+      await tester.pumpWidget(
+        _host(
+          repository,
+          picker: _file('dataset.json', datasetBytes()),
+          transport: transport,
+        ),
+      );
+      await _untilPhase(tester, FulfilmentUiPhase.empty);
+      await tester.tap(find.byKey(const Key('json-import-button')));
+      await _until(
+        tester,
+        () => find.byKey(const Key('json-issued-amount')).evaluate().isNotEmpty,
+      );
+      expect(_issuedAmount(tester), '0,00');
+      final controller = _controllerOf(tester, find.byType(JsonImportScreen));
+
+      final other = FulfilmentApplication(repository: repository);
+      expect(await other.load(), isA<LoadReady>());
+      expect(
+        await other.reserve(
+          orderId: 'ORD-1',
+          productId: productId,
+          address: address,
+          serialNumber: serial,
+          quantity: 2,
+        ),
+        isA<FulfilmentCommitted<ReserveResult>>(),
+      );
+      expect(
+        await other.issueOrder('ORD-1'),
+        isA<FulfilmentCommitted<IssueOrderResult>>(),
+      );
+      transport.deliver(
+        StorageChangeNotice(
+          revision: '${other.revision}',
+          fingerprint: controller.fingerprint!,
+          senderId: 'remote-tab',
+        ),
+      );
+      await _until(tester, () => _issuedAmount(tester) == '649,00');
+      expect(
+        tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
+        '1',
+      );
+
+      expect(await controller.refresh(), isA<LoadReady>());
+      await tester.pump();
+      expect(_issuedAmount(tester), '649,00');
     });
 
     testWidgets('shows a restored session without asking to import again', (
@@ -497,8 +627,14 @@ Widget _host(
   FulfilmentRepository repository, {
   Future<PickedBytes?> Function()? picker,
   Widget? child,
+  StorageChangeTransport? transport,
 }) {
-  return _JsonHost(repository: repository, picker: picker, child: child);
+  return _JsonHost(
+    repository: repository,
+    picker: picker,
+    transport: transport,
+    child: child,
+  );
 }
 
 Future<PickedBytes?> Function() _file(String name, Uint8List bytes) {
@@ -518,14 +654,23 @@ void _expectReadyHierarchy(WidgetTester tester) {
       .widget<Text>(find.byKey(const Key('json-issued-count')))
       .style
       ?.fontSize;
+  final amountSize = tester
+      .widget<Text>(find.byKey(const Key('json-issued-amount')))
+      .style
+      ?.fontSize;
   expect(storeSize, isNotNull);
   expect(countSize, isNotNull);
   expect(issuedSize, countSize);
+  expect(amountSize, countSize);
   expect(storeSize!, greaterThan(countSize!));
   expect(find.byKey(const Key('json-db-name')), findsNothing);
   expect(find.text(AppStrings.jsonDbNameLabel), findsNothing);
   expect(
     tester.getTopLeft(find.byKey(const Key('json-order-count'))).dy,
+    tester.getTopLeft(find.byKey(const Key('json-issued-count'))).dy,
+  );
+  expect(
+    tester.getTopLeft(find.byKey(const Key('json-issued-amount'))).dy,
     tester.getTopLeft(find.byKey(const Key('json-issued-count'))).dy,
   );
   expect(
@@ -559,6 +704,8 @@ void _expectDataset(WidgetTester tester) {
     tester.widget<Text>(find.byKey(const Key('json-issued-count'))).data,
     '0',
   );
+  expect(_issuedAmount(tester), '0,00');
+  expect(find.text(AppStrings.jsonIssuedAmountLabel), findsOneWidget);
 }
 
 bool _importEnabled(WidgetTester tester) {
@@ -615,10 +762,16 @@ Future<void> _seed(MemoryFulfilmentRepository repository) async {
 }
 
 class _JsonHost extends StatefulWidget {
-  const _JsonHost({required this.repository, this.picker, this.child});
+  const _JsonHost({
+    required this.repository,
+    this.picker,
+    this.transport,
+    this.child,
+  });
 
   final FulfilmentRepository repository;
   final Future<PickedBytes?> Function()? picker;
+  final StorageChangeTransport? transport;
   final Widget? child;
 
   @override
@@ -634,7 +787,7 @@ class _JsonHostState extends State<_JsonHost> {
     _controller = FulfilmentUiController.open(
       repository: widget.repository,
       databaseName: _databaseName,
-      transport: _Transport(),
+      transport: widget.transport ?? _Transport(),
       visibility: _Pages(),
       senderId: 'json-import-test',
     );
@@ -722,4 +875,56 @@ final class _Transport implements StorageChangeTransport {
 
   @override
   void close() {}
+}
+
+final class _NotifyingTransport implements StorageChangeTransport {
+  void Function(StorageChangeNotice notice)? _listener;
+
+  void deliver(StorageChangeNotice notice) {
+    _listener?.call(notice);
+  }
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  bool publish(StorageChangeNotice notice) => true;
+
+  @override
+  void listen(void Function(StorageChangeNotice notice) onNotice) {
+    _listener = onNotice;
+  }
+
+  @override
+  void close() {
+    _listener = null;
+  }
+}
+
+String _issuedAmount(WidgetTester tester) {
+  return tester.widget<Text>(find.byKey(const Key('json-issued-amount'))).data!;
+}
+
+Uint8List _precisionBytes() {
+  const json =
+      '{"storeName":"Магазин Тест","dbName":"Store_01-A",'
+      '"dateCreate":"20261003114618","stocks":[{"Address":"A-01",'
+      '"ProductID":1290564103789190763,"SerialNumber":"SN-0001","Quantity":5}],'
+      '"orders":['
+      '{"OrderID":"ORD-R","InvoiceDate":"20261003114618",'
+      '"InvoiceNumber":"INV-R","OrderNumber":1,'
+      '"Customer":"Клієнт","CustomerPhone":"0501112233","Goods":[{'
+      '"Product":"Товар","ProductID":1290564103789190763,"Quantity":2,'
+      '"Price":10.00,"Amount":19.99,"isServiceGood":1,"isParcel":0}]},'
+      '{"OrderID":"ORD-P","InvoiceDate":"20261003114618",'
+      '"InvoiceNumber":"INV-P","OrderNumber":2,'
+      '"Customer":"Клієнт","CustomerPhone":"0501112233","Goods":[{'
+      '"Product":"Товар","ProductID":1290564103789190763,"Quantity":1,'
+      '"Price":0.10,"Amount":0.10,"isServiceGood":1,"isParcel":0}]},'
+      '{"OrderID":"ORD-Q","InvoiceDate":"20261003114618",'
+      '"InvoiceNumber":"INV-Q","OrderNumber":3,'
+      '"Customer":"Клієнт","CustomerPhone":"0501112233","Goods":[{'
+      '"Product":"Товар","ProductID":1290564103789190763,"Quantity":1,'
+      '"Price":0.20,"Amount":0.20,"isServiceGood":1,"isParcel":0}]}]}';
+  return Uint8List.fromList(utf8.encode(json));
 }

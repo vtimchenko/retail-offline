@@ -213,7 +213,10 @@ class _EmptyBody extends StatelessWidget {
                         key: Key('json-import-progress'),
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       ),
                       SizedBox(width: 12),
                       Text(AppStrings.jsonImporting),
@@ -242,7 +245,7 @@ class _ReadyBody extends StatelessWidget {
   /// Live session from the controller. Not a copy kept by the screen.
   final FulfilmentSession? session;
 
-  /// Chooser shared with [DatasetReplacementAction] and the orders list.
+  /// Chooser for [DatasetReplacementAction] on this screen.
   final JsonFileService? fileService;
 
   @override
@@ -266,53 +269,143 @@ class _ReadyBody extends StatelessWidget {
                 children: [
                   Text(
                     AppStrings.jsonReadyTitle,
-                    style: textTheme.titleLarge?.copyWith(
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    AppStrings.jsonStoreNameLabel,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  Text(
+                    dataset.storeName,
+                    key: const Key('json-store-name'),
+                    style: textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _MetaLine(
-                    label: AppStrings.jsonStoreNameLabel,
-                    value: dataset.storeName,
-                    valueKey: const Key('json-store-name'),
-                  ),
-                  _MetaLine(
-                    label: AppStrings.jsonDbNameLabel,
-                    value: dataset.dbName,
-                    valueKey: const Key('json-db-name'),
-                  ),
+                  _DatasetCounters(session: session!),
+                  const SizedBox(height: 12),
                   _MetaLine(
                     label: AppStrings.jsonDateCreateLabel,
                     value: DisplayFormat.formatInvoiceDate(dataset.dateCreate),
                     valueKey: const Key('json-date-create'),
-                  ),
-                  _MetaLine(
-                    label: AppStrings.jsonOrdersLabel,
-                    value: dataset.orders.length.toString(),
-                    valueKey: const Key('json-order-count'),
                   ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
-          DatasetReplacementAction(fileService: fileService),
-          const SizedBox(height: 16),
           FilledButton(
             key: const Key('json-view-orders'),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => JsonOrdersScreen(fileService: fileService),
+                  builder: (_) => const JsonOrdersScreen(),
                 ),
               );
             },
             child: const Text(AppStrings.viewOrders),
           ),
+          const SizedBox(height: 16),
+          DatasetReplacementAction(fileService: fileService),
         ],
       ),
     );
   }
+}
+
+/// Orders in the dataset, and orders already issued or exported.
+///
+/// Exported orders stay in the issued total. The count is derived on each
+/// build from [FulfilmentSession.statusOf] and is not stored.
+class _DatasetCounters extends StatelessWidget {
+  const _DatasetCounters({required this.session});
+
+  final FulfilmentSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final valueStyle = textTheme.titleLarge?.copyWith(
+      fontWeight: FontWeight.w700,
+    );
+    final labelStyle = textTheme.bodySmall?.copyWith(
+      color: AppColors.textSecondary,
+    );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: _Counter(
+            label: AppStrings.jsonOrdersLabel,
+            value: session.dataset.orders.length.toString(),
+            valueKey: const Key('json-order-count'),
+            valueStyle: valueStyle,
+            labelStyle: labelStyle,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: _Counter(
+            label: AppStrings.jsonIssuedCountLabel,
+            value: _issuedOrderCount(session).toString(),
+            valueKey: const Key('json-issued-count'),
+            valueStyle: valueStyle,
+            labelStyle: labelStyle,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Counter extends StatelessWidget {
+  const _Counter({
+    required this.label,
+    required this.value,
+    required this.valueKey,
+    required this.valueStyle,
+    required this.labelStyle,
+  });
+
+  final String label;
+  final String value;
+  final Key valueKey;
+  final TextStyle? valueStyle;
+  final TextStyle? labelStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: labelStyle),
+        Text(value, key: valueKey, style: valueStyle),
+      ],
+    );
+  }
+}
+
+int _issuedOrderCount(FulfilmentSession session) {
+  var issued = 0;
+  for (final order in session.dataset.orders) {
+    switch (session.statusOf(order.orderId)) {
+      case OrderStatus.issued:
+      case OrderStatus.exported:
+        issued++;
+      case OrderStatus.noSelection:
+      case OrderStatus.inProgress:
+      case OrderStatus.readyForIssue:
+      case null:
+        break;
+    }
+  }
+  return issued;
 }
 
 class _MetaLine extends StatelessWidget {

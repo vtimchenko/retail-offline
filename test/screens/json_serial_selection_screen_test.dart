@@ -10,6 +10,7 @@ import 'package:retail_offline/application/fulfilment_tab_coordinator.dart';
 import 'package:retail_offline/application/fulfilment_ui_controller.dart';
 import 'package:retail_offline/application/page_visibility.dart';
 import 'package:retail_offline/core/constants/app_constants.dart';
+import 'package:retail_offline/core/theme/app_colors.dart';
 import 'package:retail_offline/core/theme/app_theme.dart';
 import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
 import 'package:retail_offline/persistence/browser/storage_change_notice.dart';
@@ -40,10 +41,22 @@ void main() {
       expect(screen.productId, productId);
       expect(find.byType(JsonOrderDetailsScreen), findsOneWidget);
       expect(find.text('Тестовий товар 1'), findsWidgets);
-      expect(find.text(productId), findsWidgets);
+      expect(find.text(productId), findsNothing);
+      expect(find.byKey(const Key('json-serial-product-id')), findsNothing);
+      expect(find.byKey(const Key('json-serial-status')), findsNothing);
+      expect(find.byKey(const Key('json-serial-required')), findsNothing);
+      expect(find.byKey(const Key('json-serial-remaining')), findsNothing);
+      expect(find.byKey(const Key('json-serial-meest')), findsNothing);
       expect(find.textContaining('9.007'), findsNothing);
       expect(find.text('Обрано 0 з 2'), findsWidgets);
-      expect(find.text('Залишилось: 2'), findsOneWidget);
+      expect(find.text('Залишилось: 2'), findsNothing);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('json-serial-progress')))
+            .style
+            ?.color,
+        AppColors.textSecondary,
+      );
 
       await tester.tap(
         find.descendant(
@@ -90,7 +103,8 @@ void main() {
         find.byKey(const Key('json-serial-selected-empty')),
         findsOneWidget,
       );
-      expect(find.text(productId), findsOneWidget);
+      expect(find.text(productId), findsNothing);
+      expect(find.byKey(const Key('json-serial-product')), findsOneWidget);
       expect(find.textContaining('e+'), findsNothing);
 
       await _highlight(tester, 'A-01', 'SN-0001');
@@ -103,8 +117,15 @@ void main() {
       expect(repository.commitAttempts, attempts + 1);
       expect(_qty(tester, 'json-available-qty', 'A-01', 'SN-0001'), '4');
       expect(_qty(tester, 'json-selected-qty', 'A-01', 'SN-0001'), '1');
-      expect(find.text('Залишилось: 1'), findsOneWidget);
-      expect(find.text('В процесі'), findsOneWidget);
+      expect(find.text('Залишилось: 1'), findsNothing);
+      expect(find.text('В процесі'), findsNothing);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('json-serial-progress')))
+            .style
+            ?.color,
+        AppColors.orderStatusInProgressForeground,
+      );
       expect(find.byKey(const Key('json-serial-error')), findsNothing);
 
       await _highlightSelected(tester, 'A-01', 'SN-0001');
@@ -120,7 +141,8 @@ void main() {
         find.byKey(const Key('json-serial-selected-empty')),
         findsOneWidget,
       );
-      expect(find.text('Залишилось: 2'), findsOneWidget);
+      expect(find.text('Залишилось: 2'), findsNothing);
+      expect(find.text('Обрано 0 з 2'), findsOneWidget);
     });
 
     testWidgets('a full line disables another add', (tester) async {
@@ -141,8 +163,16 @@ void main() {
       );
 
       final attempts = repository.commitAttempts;
-      expect(find.text('Залишилось: 0'), findsOneWidget);
-      expect(find.text('Готово до видачі'), findsOneWidget);
+      expect(find.text('Залишилось: 0'), findsNothing);
+      expect(find.text('Готово до видачі'), findsNothing);
+      expect(find.text('Обрано 2 з 2'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('json-serial-progress')))
+            .style
+            ?.color,
+        AppColors.primaryDark,
+      );
       expect(_addEnabled(tester), isFalse);
 
       await tester.tap(find.byKey(const Key('json-serial-add')));
@@ -196,6 +226,11 @@ void main() {
 
       expect(find.text('Посилка'), findsOneWidget);
       expect(find.text('ТТН посилки: TTN-1'), findsOneWidget);
+      expect(find.text('Meest ТТН: 000123'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('ТТН посилки: TTN-1')).dy,
+        tester.getTopLeft(find.text('Meest ТТН: 000123')).dy,
+      );
       expect(
         find.byKey(const ValueKey(('json-available', 'A-01', 'TTN-1'))),
         findsOneWidget,
@@ -220,6 +255,48 @@ void main() {
       expect(_qty(tester, 'json-available-qty', 'A-01', 'TTN-1'), '1');
       expect(_qty(tester, 'json-available-qty', 'B-02', 'TTN-1'), '3');
       expect(_qty(tester, 'json-selected-qty', 'A-01', 'TTN-1'), '1');
+    });
+
+    testWidgets('hides Meest TTN unless a parcel has a value', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(
+        repository,
+        _catalogue(
+          stocks: [
+            _stock('A-01', _parcelId, 'TTN-1', 1),
+            _stock('A-01', productId, 'SN-0001', 1),
+          ],
+          orders: [
+            _order('ORD-1', '7', [
+              _line(
+                'Товар Посилка',
+                _parcelId,
+                1,
+                parcelTtn: 'TTN-1',
+                meestTtn: '',
+              ),
+              _line('Товар', productId, 1, meestTtn: '000999'),
+            ]),
+          ],
+        ),
+      );
+
+      await _pumpSerial(
+        tester,
+        repository,
+        productId: _parcelId,
+        size: const Size(360, 800),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text('ТТН посилки: TTN-1'), findsOneWidget);
+      expect(find.byKey(const Key('json-serial-meest')), findsNothing);
+      expect(find.textContaining('Meest'), findsNothing);
+
+      await _pumpSerial(tester, repository, size: const Size(360, 800));
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('json-serial-parcel')), findsNothing);
+      expect(find.byKey(const Key('json-serial-meest')), findsNothing);
+      expect(find.textContaining('000999'), findsNothing);
     });
 
     testWidgets('the same serial at two addresses stays two rows', (
@@ -262,7 +339,8 @@ void main() {
       final attempts = repository.commitAttempts;
       await _pumpSerial(tester, repository);
 
-      expect(find.text('Видано'), findsOneWidget);
+      expect(find.text('Видано'), findsNothing);
+      expect(find.text('Обрано 2 з 2'), findsOneWidget);
       expect(find.byKey(const Key('json-serial-readonly')), findsOneWidget);
       expect(_qty(tester, 'json-selected-qty', 'A-01', 'SN-0001'), '2');
       expect(_qty(tester, 'json-available-qty', 'A-01', 'SN-0001'), '3');
@@ -283,7 +361,8 @@ void main() {
       final attempts = repository.commitAttempts;
       await _pumpSerial(tester, repository);
 
-      expect(find.text('Експортовано'), findsOneWidget);
+      expect(find.text('Експортовано'), findsNothing);
+      expect(find.text('Обрано 2 з 2'), findsOneWidget);
       expect(find.text(AppStrings.jsonSerialOrderLocked), findsOneWidget);
       expect(_qty(tester, 'json-selected-qty', 'A-01', 'SN-0001'), '2');
       expect(_addEnabled(tester), isFalse);
@@ -550,6 +629,25 @@ void main() {
             )
             .dy,
       );
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(of: header, matching: find.text('Адреса')),
+            )
+            .maxLines,
+        2,
+      );
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(
+                of: header,
+                matching: find.text('Серійний номер'),
+              ),
+            )
+            .maxLines,
+        2,
+      );
       expect(find.byType(Card), findsNothing);
 
       await _highlight(tester, 'A-01', 'SN-0001');
@@ -572,6 +670,50 @@ void main() {
       );
       expect(find.byType(Card), findsWidgets);
       expect(find.text('SN-0001'), findsWidgets);
+    });
+
+    testWidgets('long addresses and serials do not overflow', (tester) async {
+      const longAddress = 'ADDR-WAREHOUSE-SHELF-BIN-VERY-LONG-LOCATION';
+      const longSerial = 'SN-1234567890123456789012345678901234567890';
+      final bytes = Uint8List.fromList(
+        utf8.encode(
+          utf8
+              .decode(datasetBytes())
+              .replaceFirst('A-01', longAddress)
+              .replaceFirst('SN-0001', longSerial),
+        ),
+      );
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, bytes);
+
+      for (final size in const [Size(752, 900), Size(1200, 900)]) {
+        await _pumpSerial(tester, repository, size: size);
+        expect(tester.takeException(), isNull);
+        expect(find.text(longAddress), findsWidgets);
+        expect(find.text(longSerial), findsWidgets);
+        final header = find.byKey(const Key('json-serial-available-header'));
+        expect(header, findsOneWidget);
+        expect(
+          tester
+              .getTopLeft(
+                find.descendant(of: header, matching: find.text('Адреса')),
+              )
+              .dy,
+          tester
+              .getTopLeft(
+                find.descendant(
+                  of: header,
+                  matching: find.text('Серійний номер'),
+                ),
+              )
+              .dy,
+        );
+      }
+
+      await _pumpSerial(tester, repository, size: const Size(360, 800));
+      expect(tester.takeException(), isNull);
+      expect(find.text(longAddress), findsWidgets);
+      expect(find.text(longSerial), findsWidgets);
     });
 
     testWidgets('desktop double-tap reserves one unit', (tester) async {
@@ -1050,7 +1192,13 @@ Uint8List _parcelBytes() => _catalogue(
   ],
   orders: [
     _order('ORD-1', '7', [
-      _line('Товар Посилка', _parcelId, 4, parcelTtn: 'TTN-1'),
+      _line(
+        'Товар Посилка',
+        _parcelId,
+        4,
+        parcelTtn: 'TTN-1',
+        meestTtn: '000123',
+      ),
     ]),
   ],
 );
@@ -1120,9 +1268,16 @@ String _order(String id, String number, List<String> goods) =>
     '"Customer":"Клієнт","CustomerPhone":"0501112233",'
     '"Goods":[${goods.join(',')}]}';
 
-String _line(String name, String id, int quantity, {String? parcelTtn}) {
+String _line(
+  String name,
+  String id,
+  int quantity, {
+  String? parcelTtn,
+  String? meestTtn,
+}) {
   final parcel = parcelTtn == null ? 0 : 1;
   final ttn = parcelTtn == null ? '' : ',"ParcelTTN":"$parcelTtn"';
+  final meest = meestTtn == null ? '' : ',"MeestTTN":"$meestTtn"';
   return '{"Product":"$name","ProductID":$id,"Quantity":$quantity,'
-      '"Price":10.00,"Amount":10.00,"isServiceGood":0,"isParcel":$parcel$ttn}';
+      '"Price":10.00,"Amount":10.00,"isServiceGood":0,"isParcel":$parcel$ttn$meest}';
 }

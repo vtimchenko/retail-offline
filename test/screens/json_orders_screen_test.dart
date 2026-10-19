@@ -229,7 +229,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text(_formattedPhone), findsOneWidget);
+      expect(find.text('(067) 123-45-67'), findsOneWidget);
       expect(find.text('380671234567'), findsNothing);
       expect(find.text('Клієнт Формат'), findsOneWidget);
       expect(find.text('Клієнт Цифри'), findsNothing);
@@ -254,9 +254,9 @@ void main() {
       await tester.pump();
 
       expect(find.text('Клієнт Цифри'), findsOneWidget);
-      expect(find.text('0501112233'), findsOneWidget);
+      expect(find.text('(050) 111-22-33'), findsOneWidget);
       expect(find.text('Клієнт Формат'), findsNothing);
-      expect(find.text(_formattedPhone), findsNothing);
+      expect(find.text('(067) 123-45-67'), findsNothing);
       expect(find.text('Клієнт Інший'), findsNothing);
     });
 
@@ -295,8 +295,84 @@ void main() {
       final header = find.byKey(const Key('json-orders-table-header'));
       expect(header, findsOneWidget);
       final date = find.descendant(of: header, matching: find.text('Дата'));
+      final invoice = find.descendant(
+        of: header,
+        matching: find.text('№ рахунка'),
+      );
       final phone = find.descendant(of: header, matching: find.text('Телефон'));
+      expect(invoice, findsOneWidget);
+      expect(
+        find.descendant(of: header, matching: find.text('Накладна')),
+        findsNothing,
+      );
+      expect(
+        tester.getTopLeft(invoice).dx,
+        greaterThan(tester.getTopLeft(date).dx),
+      );
+      expect(
+        tester.getTopLeft(phone).dx,
+        greaterThan(tester.getTopLeft(invoice).dx),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('ORD-none')),
+          matching: find.text('INV-ORD-none'),
+        ),
+        findsOneWidget,
+      );
       expect(tester.getTopLeft(date).dy, tester.getTopLeft(phone).dy);
+      expect(find.text('Замовлення — Магазин Тест'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(JsonOrdersScreen),
+          matching: find.text(AppStrings.ordersScreenTitle),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(JsonOrdersScreen),
+          matching: find.text(AppStrings.jsonDateCreateLabel),
+        ),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('json-orders-date-create')), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(JsonOrdersScreen),
+          matching: find.byKey(const Key('json-replace-dataset')),
+        ),
+        findsNothing,
+      );
+      final rowDate = find.descendant(
+        of: find.byKey(const ValueKey('ORD-none')),
+        matching: find.text('03.10.2026 11:46'),
+      );
+      final rowPhone = find.descendant(
+        of: find.byKey(const ValueKey('ORD-none')),
+        matching: find.text('(050) 100-00-01'),
+      );
+      expect(tester.getTopLeft(date).dx, tester.getTopLeft(rowDate).dx);
+      expect(tester.getTopLeft(phone).dx, tester.getTopLeft(rowPhone).dx);
+      expect(tester.widget<Text>(rowDate).maxLines, 2);
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(const ValueKey('ORD-none')),
+                matching: find.text('Без вибору'),
+              ),
+            )
+            .maxLines,
+        2,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(JsonOrdersScreen),
+          matching: find.byType(Divider),
+        ),
+        findsNWidgets(5),
+      );
       _expectStatusLabels(tester, table: true);
       expect(_rowColor(tester, 'ORD-none'), AppColors.background);
       expect(
@@ -317,6 +393,86 @@ void main() {
       );
     });
 
+    testWidgets('long order identifiers do not overflow desktop or mobile', (
+      tester,
+    ) async {
+      for (final size in const [
+        Size(752, 900),
+        Size(1200, 900),
+        Size(360, 800),
+      ]) {
+        await _importAndOpen(
+          tester,
+          MemoryFulfilmentRepository(),
+          _searchBytes(),
+          size: size,
+        );
+        expect(tester.takeException(), isNull);
+        expect(find.text(_largeOrderNumber), findsWidgets);
+        final title = tester.widget<Text>(find.textContaining('Замовлення —'));
+        expect(title.maxLines, 1);
+        expect(title.overflow, TextOverflow.ellipsis);
+        if (size.width < 720) {
+          expect(
+            find.text('Рахунок №INV-ORD-A від 03.10.2026 11:46'),
+            findsOneWidget,
+          );
+          expect(find.text('(067) 123-45-67'), findsOneWidget);
+        }
+      }
+    });
+
+    testWidgets('long store, customer, and invoice values stay readable', (
+      tester,
+    ) async {
+      const store =
+          'Магазин з дуже довгою назвою для вузького екрана співробітника';
+      const customer = 'Клієнт з дуже довгим прізвищем та іменем для картки';
+      const phone = '+380671234567890123';
+      const invoice = 'INV-00000000000000000099';
+      final bytes = Uint8List.fromList(
+        utf8.encode(
+          utf8
+              .decode(_statusBytes())
+              .replaceFirst('Магазин Тест', store)
+              .replaceFirst('Клієнт 100', customer)
+              .replaceFirst('0501000001', phone)
+              .replaceFirst('INV-ORD-none', invoice),
+        ),
+      );
+
+      for (final size in const [
+        Size(360, 800),
+        Size(752, 900),
+        Size(1200, 900),
+      ]) {
+        await _importAndOpen(
+          tester,
+          MemoryFulfilmentRepository(),
+          bytes,
+          size: size,
+        );
+        expect(tester.takeException(), isNull);
+        final title = tester.widget<Text>(find.textContaining('Замовлення —'));
+        expect(title.data, 'Замовлення — $store');
+        expect(title.maxLines, 1);
+        expect(title.overflow, TextOverflow.ellipsis);
+        if (size.width < 720) {
+          expect(
+            find.text('Рахунок №$invoice від 03.10.2026 11:46'),
+            findsOneWidget,
+          );
+          expect(find.text(customer), findsOneWidget);
+          expect(find.text(phone), findsOneWidget);
+          expect(find.text('100'), findsOneWidget);
+        } else {
+          expect(find.text(invoice), findsOneWidget);
+          expect(find.text(customer), findsOneWidget);
+          expect(find.text(phone), findsOneWidget);
+        }
+      }
+    });
+
     testWidgets('narrow layout shows the same statuses as cards', (
       tester,
     ) async {
@@ -332,6 +488,12 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.byKey(const Key('json-orders-table-header')), findsNothing);
       expect(find.text('Статус'), findsNothing);
+      expect(
+        find.text('Рахунок №INV-ORD-none від 03.10.2026 11:46'),
+        findsOneWidget,
+      );
+      expect(find.text('Клієнт 100'), findsOneWidget);
+      expect(find.text('(050) 100-00-01'), findsOneWidget);
       _expectStatusLabels(tester, table: false);
       expect(_cardColor(tester, 'ORD-none'), isNull);
       expect(
@@ -872,11 +1034,15 @@ void main() {
       expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
       expect(_enabled(tester, 'json-create-export'), isFalse);
       expect(
-        find.descendant(
-          of: find.byKey(const Key('json-create-export')),
-          matching: find.byType(CircularProgressIndicator),
-        ),
-        findsOneWidget,
+        tester
+            .widget<CircularProgressIndicator>(
+              find.descendant(
+                of: find.byKey(const Key('json-create-export')),
+                matching: find.byType(CircularProgressIndicator),
+              ),
+            )
+            .color,
+        Colors.white,
       );
 
       hold.release();
@@ -1594,11 +1760,15 @@ Uint8List _replacedBytes() {
 }
 
 void _expectStatusLabels(WidgetTester tester, {required bool table}) {
-  expect(find.text('Без вибору'), findsOneWidget);
-  expect(find.text('В процесі'), findsOneWidget);
-  expect(find.text('Готово до видачі'), findsOneWidget);
-  expect(find.text('Видано'), findsOneWidget);
-  expect(find.text('Експортовано'), findsOneWidget);
+  Finder label(String text) => find.descendant(
+    of: find.byType(JsonOrdersScreen),
+    matching: find.text(text),
+  );
+  expect(label('Без вибору'), findsOneWidget);
+  expect(label('В процесі'), findsOneWidget);
+  expect(label('Готово до видачі'), findsOneWidget);
+  expect(label('Видано'), findsOneWidget);
+  expect(label('Експортовано'), findsOneWidget);
   expect(find.text('Готово'), findsNothing);
   expect(find.text('Файл сформовано'), findsNothing);
   expect(find.byIcon(Icons.radio_button_unchecked), findsOneWidget);

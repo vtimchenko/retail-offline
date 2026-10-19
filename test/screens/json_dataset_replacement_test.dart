@@ -27,7 +27,7 @@ import '../support/memory_fulfilment_repository.dart';
 void main() {
   group('JSON dataset replacement', () {
     testWidgets(
-      'offers replacement on the ready import screen and order list',
+      'offers replacement on the ready import screen and hides it on orders',
       (tester) async {
         final repository = MemoryFulfilmentRepository();
         await _seed(repository);
@@ -42,6 +42,10 @@ void main() {
         expect(_replaceEnabled(tester, JsonImportScreen), isTrue);
         expect(find.byKey(const Key('json-replace-blocked')), findsNothing);
         expect(find.byKey(const Key('json-view-orders')), findsOneWidget);
+        expect(
+          tester.widget<Text>(find.byKey(const Key('json-date-create'))).data,
+          '03.10.2026 11:46',
+        );
 
         await tester.tap(find.byKey(const Key('json-view-orders')));
         await _until(
@@ -51,14 +55,10 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
 
         expect(find.byType(JsonOrdersScreen), findsOneWidget);
-        expect(_onOrders(const Key('json-replace-dataset')), findsOneWidget);
-        expect(_replaceEnabled(tester, JsonOrdersScreen), isTrue);
-        expect(
-          tester
-              .widget<Text>(find.byKey(const Key('json-orders-date-create')))
-              .data,
-          '03.10.2026 11:46',
-        );
+        expect(find.text('Замовлення — Магазин Тест'), findsOneWidget);
+        expect(_onOrders(const Key('json-replace-dataset')), findsNothing);
+        expect(_onOrders(const Key('json-replace-blocked')), findsNothing);
+        expect(find.byKey(const Key('json-orders-date-create')), findsNothing);
       },
     );
 
@@ -107,7 +107,7 @@ void main() {
       await tester.pumpWidget(
         _host(
           repository,
-          child: JsonOrdersScreen(
+          child: JsonImportScreen(
             fileService: JsonFileService(
               picker: () async {
                 picks++;
@@ -117,8 +117,8 @@ void main() {
           ),
         ),
       );
-      await _untilPhaseOn(tester, JsonOrdersScreen, FulfilmentUiPhase.ready);
-      final controller = _controller(tester, find.byType(JsonOrdersScreen));
+      await _untilPhase(tester, FulfilmentUiPhase.ready);
+      final controller = _controller(tester, find.byType(JsonImportScreen));
       expect(
         await controller.reserve(
           orderId: 'ORD-1',
@@ -135,7 +135,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(_replaceEnabled(tester, JsonOrdersScreen), isFalse);
+      expect(_replaceEnabled(tester, JsonImportScreen), isFalse);
       expect(find.byKey(const Key('json-replace-blocked')), findsOneWidget);
       expect(find.text(AppStrings.jsonReplaceExportFirst), findsOneWidget);
 
@@ -146,6 +146,15 @@ void main() {
       expect(find.byKey(const Key('json-replace-dialog')), findsNothing);
       expect(controller.session!.statusOf('ORD-1'), OrderStatus.issued);
       expect(repository.commitAttempts, 3);
+
+      await tester.tap(find.byKey(const Key('json-view-orders')));
+      await _until(
+        tester,
+        () => find.byType(JsonOrdersScreen).evaluate().isNotEmpty,
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(_onOrders(const Key('json-replace-dataset')), findsNothing);
+      expect(_onOrders(const Key('json-replace-blocked')), findsNothing);
     });
 
     testWidgets('partial reservations leave replacement enabled', (
@@ -155,10 +164,10 @@ void main() {
       await _seed(repository);
 
       await tester.pumpWidget(
-        _host(repository, child: const JsonOrdersScreen()),
+        _host(repository, child: const JsonImportScreen()),
       );
-      await _untilPhaseOn(tester, JsonOrdersScreen, FulfilmentUiPhase.ready);
-      final controller = _controller(tester, find.byType(JsonOrdersScreen));
+      await _untilPhase(tester, FulfilmentUiPhase.ready);
+      final controller = _controller(tester, find.byType(JsonImportScreen));
       expect(
         await controller.reserve(
           orderId: 'ORD-1',
@@ -171,9 +180,23 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('В процесі'), findsOneWidget);
-      expect(_replaceEnabled(tester, JsonOrdersScreen), isTrue);
+      expect(_replaceEnabled(tester, JsonImportScreen), isTrue);
       expect(find.byKey(const Key('json-replace-blocked')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('json-view-orders')));
+      await _until(
+        tester,
+        () => find.byType(JsonOrdersScreen).evaluate().isNotEmpty,
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+        find.descendant(
+          of: find.byType(JsonOrdersScreen),
+          matching: find.text('В процесі'),
+        ),
+        findsOneWidget,
+      );
+      expect(_onOrders(const Key('json-replace-dataset')), findsNothing);
     });
 
     testWidgets('a cancelled file pick leaves the dataset unchanged', (
@@ -336,92 +359,131 @@ void main() {
       );
     });
 
-    testWidgets('replacement from the order list keeps that list', (
-      tester,
-    ) async {
-      final repository = MemoryFulfilmentRepository();
-      await _seed(repository);
+    testWidgets(
+      'replacement from the startup screen refreshes the order list',
+      (tester) async {
+        final repository = MemoryFulfilmentRepository();
+        await _seed(repository);
 
-      await tester.pumpWidget(
-        _host(repository, picker: _file('next.json', _nextBytes())),
-      );
-      await _until(
-        tester,
-        () => find.byKey(const Key('json-view-orders')).evaluate().isNotEmpty,
-      );
-      await tester.tap(find.byKey(const Key('json-view-orders')));
-      await _until(
-        tester,
-        () => find.byType(JsonOrdersScreen).evaluate().isNotEmpty,
-      );
-      await tester.pump(const Duration(milliseconds: 400));
-      final controller = _controller(tester, find.byType(JsonOrdersScreen));
-      expect(
-        await controller.reserve(
-          orderId: 'ORD-1',
-          productId: productId,
-          address: address,
-          serialNumber: serial,
-          quantity: 2,
-        ),
-        isA<FulfilmentCommitted<ReserveResult>>(),
-      );
-      expect(
-        await controller.issueOrder('ORD-1'),
-        isA<FulfilmentCommitted<IssueOrderResult>>(),
-      );
-      expect(
-        await controller.commitCumulativeExport(
-          now: () => DateTime(2026, 10, 14, 15, 7, 22),
-        ),
-        isA<FulfilmentExported>(),
-      );
-      await tester.pump();
+        await tester.pumpWidget(
+          _host(repository, picker: _file('next.json', _nextBytes())),
+        );
+        await _until(
+          tester,
+          () => find.byKey(const Key('json-view-orders')).evaluate().isNotEmpty,
+        );
+        await tester.tap(find.byKey(const Key('json-view-orders')));
+        await _until(
+          tester,
+          () => find.byType(JsonOrdersScreen).evaluate().isNotEmpty,
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        final controller = _controller(tester, find.byType(JsonOrdersScreen));
+        expect(_onOrders(const Key('json-replace-dataset')), findsNothing);
+        expect(find.byKey(const Key('json-orders-date-create')), findsNothing);
+        expect(
+          await controller.reserve(
+            orderId: 'ORD-1',
+            productId: productId,
+            address: address,
+            serialNumber: serial,
+            quantity: 2,
+          ),
+          isA<FulfilmentCommitted<ReserveResult>>(),
+        );
+        expect(
+          await controller.issueOrder('ORD-1'),
+          isA<FulfilmentCommitted<IssueOrderResult>>(),
+        );
+        expect(
+          await controller.commitCumulativeExport(
+            now: () => DateTime(2026, 10, 14, 15, 7, 22),
+          ),
+          isA<FulfilmentExported>(),
+        );
+        await tester.pump();
 
-      expect(find.byKey(const Key('json-share-export')), findsOneWidget);
-      expect(find.byKey(const Key('json-last-export-file')), findsOneWidget);
-      final attempts = repository.commitAttempts;
+        expect(find.byKey(const Key('json-share-export')), findsOneWidget);
+        expect(find.byKey(const Key('json-last-export-file')), findsOneWidget);
+        final attempts = repository.commitAttempts;
 
-      await tester.tap(_onOrders(const Key('json-replace-dataset')));
-      await _until(
-        tester,
-        () =>
-            find.byKey(const Key('json-replace-confirm')).evaluate().isNotEmpty,
-      );
-      await tester.tap(find.byKey(const Key('json-replace-confirm')));
-      await _until(
-        tester,
-        () => find.text('Новий Клієнт').evaluate().isNotEmpty,
-      );
+        await tester.tap(
+          find.descendant(
+            of: find.byType(JsonOrdersScreen),
+            matching: find.byType(BackButton),
+          ),
+        );
+        await _until(
+          tester,
+          () => find.byType(JsonOrdersScreen).evaluate().isEmpty,
+        );
+        await tester.tap(find.byKey(const Key('json-replace-dataset')));
+        await _until(
+          tester,
+          () => find
+              .byKey(const Key('json-replace-confirm'))
+              .evaluate()
+              .isNotEmpty,
+        );
+        await tester.tap(find.byKey(const Key('json-replace-confirm')));
+        await _until(
+          tester,
+          () => find.text('Інший магазин').evaluate().isNotEmpty,
+        );
 
-      expect(find.byType(JsonOrdersScreen), findsOneWidget);
-      expect(find.byKey(const Key('json-replace-dialog')), findsNothing);
-      expect(
-        find.descendant(
-          of: find.byType(JsonOrdersScreen),
-          matching: find.text('Інший магазин'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        tester
-            .widget<Text>(find.byKey(const Key('json-orders-date-create')))
-            .data,
-        '16.10.2026 12:00',
-      );
-      expect(find.text('Новий Клієнт'), findsOneWidget);
-      expect(find.text('Тестовий Клієнт А'), findsNothing);
-      expect(find.byKey(const Key('json-share-export')), findsNothing);
-      expect(find.byKey(const Key('json-last-export-file')), findsNothing);
-      expect(find.text('Експортовано'), findsNothing);
-      expect(find.text('Видано'), findsNothing);
-      expect(find.text('Без вибору'), findsWidgets);
-      expect(controller.lastExport, isNull);
-      expect(controller.session!.dataset.dbName, 'Store_02-B');
-      expect(controller.session!.statusOf('NEW-1'), OrderStatus.noSelection);
-      expect(controller.block, isNull);
-      expect(repository.commitAttempts, attempts + 1);
-    });
+        expect(find.byKey(const Key('json-replace-dialog')), findsNothing);
+        expect(
+          tester.widget<Text>(find.byKey(const Key('json-store-name'))).data,
+          'Інший магазин',
+        );
+        expect(
+          tester.widget<Text>(find.byKey(const Key('json-date-create'))).data,
+          '16.10.2026 12:00',
+        );
+        expect(find.byKey(const Key('json-db-name')), findsNothing);
+        expect(controller.session!.dataset.dbName, 'Store_02-B');
+
+        await tester.tap(find.byKey(const Key('json-view-orders')));
+        await _until(
+          tester,
+          () => find.byType(JsonOrdersScreen).evaluate().isNotEmpty,
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.text('Замовлення — Інший магазин'), findsOneWidget);
+        expect(find.byKey(const Key('json-orders-date-create')), findsNothing);
+        expect(_onOrders(const Key('json-replace-dataset')), findsNothing);
+        expect(find.text('Новий Клієнт'), findsOneWidget);
+        expect(find.text('Тестовий Клієнт А'), findsNothing);
+        expect(find.byKey(const Key('json-share-export')), findsNothing);
+        expect(find.byKey(const Key('json-last-export-file')), findsNothing);
+        expect(
+          find.descendant(
+            of: find.byType(JsonOrdersScreen),
+            matching: find.text('Експортовано'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(JsonOrdersScreen),
+            matching: find.text('Видано'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(JsonOrdersScreen),
+            matching: find.text('Без вибору'),
+          ),
+          findsWidgets,
+        );
+        expect(controller.lastExport, isNull);
+        expect(controller.session!.statusOf('NEW-1'), OrderStatus.noSelection);
+        expect(controller.block, isNull);
+        expect(repository.commitAttempts, attempts + 1);
+      },
+    );
 
     testWidgets('a second confirm does not start another commit', (
       tester,
@@ -546,14 +608,14 @@ void main() {
       await tester.pumpWidget(
         _host(
           repository,
-          child: JsonOrdersScreen(
+          child: JsonImportScreen(
             fileService: JsonFileService(
               picker: _file('next.json', _nextBytes()),
             ),
           ),
         ),
       );
-      await _untilPhaseOn(tester, JsonOrdersScreen, FulfilmentUiPhase.ready);
+      await _untilPhase(tester, FulfilmentUiPhase.ready);
       await tester.tap(find.byKey(const Key('json-replace-dataset')));
       await _until(
         tester,
@@ -575,7 +637,7 @@ void main() {
       await _until(
         tester,
         () =>
-            find.byKey(const Key('json-orders-blocked')).evaluate().isNotEmpty,
+            find.byKey(const Key('json-import-blocked')).evaluate().isNotEmpty,
       );
 
       expect(find.byKey(const Key('json-replace-dialog')), findsNothing);
@@ -584,18 +646,18 @@ void main() {
       expect(repository.commitAttempts, attempts + 1);
       expect((await persisted(repository)).dataset.storeName, 'Третій магазин');
 
-      await tester.tap(find.byKey(const Key('json-orders-retry')));
+      await tester.tap(find.byKey(const Key('json-import-retry')));
       await _until(
         tester,
         () => find.text('Третій магазин').evaluate().isNotEmpty,
       );
 
       expect(find.text('Інший магазин'), findsNothing);
-      expect(find.byType(JsonOrdersScreen), findsOneWidget);
+      expect(find.byType(JsonImportScreen), findsOneWidget);
       expect(
         _controller(
           tester,
-          find.byType(JsonOrdersScreen),
+          find.byType(JsonImportScreen),
         ).session!.dataset.storeName,
         'Третій магазин',
       );
@@ -616,6 +678,16 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
+      expect(
+        tester.getTopLeft(find.byKey(const Key('json-view-orders'))).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(const Key('json-replace-dataset'))).dy,
+        ),
+      );
+      expect(
+        tester.getSize(find.byKey(const Key('json-replace-dataset'))).height,
+        greaterThanOrEqualTo(52),
+      );
 
       await tester.tap(find.byKey(const Key('json-replace-dataset')));
       await _until(
@@ -654,7 +726,8 @@ void main() {
       );
       await tester.pump();
 
-      expect(_onOrders(const Key('json-replace-blocked')), findsOneWidget);
+      expect(_onOrders(const Key('json-replace-dataset')), findsNothing);
+      expect(_onOrders(const Key('json-replace-blocked')), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

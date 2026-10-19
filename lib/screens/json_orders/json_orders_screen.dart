@@ -12,9 +12,7 @@ import '../../domain/fulfilment/fulfilment_session.dart';
 import '../../models/retail_dataset.dart';
 import '../../services/file/cumulative_export_share.dart';
 import '../../services/file/export_share.dart';
-import '../../services/file/json_file_service.dart';
 import '../../widgets/status_message.dart';
-import '../json_import/dataset_replacement.dart';
 import '../json_import/fulfilment_block_message.dart';
 import 'dataset_order_search.dart';
 import 'json_order_details_screen.dart';
@@ -33,14 +31,10 @@ class JsonOrdersScreen extends StatefulWidget {
   /// Creates a list bound to the ambient fulfilment controller.
   ///
   /// [share] replaces the production [CumulativeExportShare] in tests.
-  /// [fileService] replaces the browser chooser used to load a new dataset.
-  const JsonOrdersScreen({super.key, this.share, this.fileService});
+  const JsonOrdersScreen({super.key, this.share});
 
   /// Shares the last committed export. Production uses the browser adapter.
   final CumulativeExportShare? share;
-
-  /// Local JSON chooser for dataset replacement.
-  final JsonFileService? fileService;
 
   @override
   State<JsonOrdersScreen> createState() => _JsonOrdersScreenState();
@@ -183,10 +177,12 @@ class _JsonOrdersScreenState extends State<JsonOrdersScreen> {
     final controller = FulfilmentScope.of(context);
     final session = controller.session;
     final title = controller.phase == FulfilmentUiPhase.ready && session != null
-        ? session.dataset.storeName
+        ? AppStrings.ordersWithStore(session.dataset.storeName)
         : AppStrings.ordersScreenTitle;
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
       body: SafeArea(
         child: switch (controller.phase) {
           FulfilmentUiPhase.loading => const _LoadingBody(),
@@ -221,7 +217,6 @@ class _JsonOrdersScreenState extends State<JsonOrdersScreen> {
                   )
                 : _ReadyOrders(
                     session: session,
-                    fileService: widget.fileService,
                     orderNumberController: _orderNumberController,
                     phoneController: _phoneController,
                     onChanged: _onSearchChanged,
@@ -353,7 +348,6 @@ class _BlockedBody extends StatelessWidget {
 class _ReadyOrders extends StatelessWidget {
   const _ReadyOrders({
     required this.session,
-    required this.fileService,
     required this.orderNumberController,
     required this.phoneController,
     required this.onChanged,
@@ -363,9 +357,6 @@ class _ReadyOrders extends StatelessWidget {
 
   /// Session installed on the controller for this build.
   final FulfilmentSession session;
-
-  /// Chooser for [DatasetReplacementAction].
-  final JsonFileService? fileService;
   final TextEditingController orderNumberController;
   final TextEditingController phoneController;
   final ValueChanged<String> onChanged;
@@ -399,26 +390,11 @@ class _ReadyOrders extends StatelessWidget {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        AppStrings.ordersScreenTitle,
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        DisplayFormat.formatInvoiceDate(
-                          session.dataset.dateCreate,
-                        ),
-                        key: const Key('json-orders-date-create'),
-                      ),
-                      const SizedBox(height: 16),
                       _ExportActions(
                         wide: wide,
                         onExport: onExport,
                         onShare: onShare,
                       ),
-                      const SizedBox(height: 12),
-                      DatasetReplacementAction(fileService: fileService),
                       const SizedBox(height: 16),
                       _SearchFields(
                         wide: wide,
@@ -486,7 +462,10 @@ class _ExportActions extends StatelessWidget {
           ? const SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             )
           : const Text(
               AppStrings.jsonCreateExport,
@@ -624,10 +603,17 @@ class _OrdersBody extends StatelessWidget {
               final order = orders[index];
               final status = session.statusOf(order.orderId);
               if (wide) {
-                return _OrderTableRow(
-                  key: ValueKey(order.orderId),
-                  order: order,
-                  status: status,
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _OrderTableRow(
+                      key: ValueKey(order.orderId),
+                      order: order,
+                      status: status,
+                    ),
+                    if (index < orders.length - 1)
+                      const Divider(height: 1, color: AppColors.border),
+                  ],
                 );
               }
               return Padding(
@@ -699,9 +685,10 @@ class _OrderTableRow extends StatelessWidget {
             invoiceNumber: order.invoiceNumber,
             orderNumber: order.orderNumber.literal,
             customer: order.customer,
-            phone: order.customerPhone,
+            phone: DisplayFormat.formatPhone(order.customerPhone),
             status: _OrderStatusBadge(status: status),
             style: Theme.of(context).textTheme.bodyMedium,
+            maxLines: 2,
           ),
         ),
       ),
@@ -734,11 +721,14 @@ class _OrderColumns extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget cell(String text, int flex) => Expanded(
       flex: flex,
-      child: Text(
-        text,
-        style: style,
-        maxLines: maxLines,
-        overflow: TextOverflow.ellipsis,
+      child: Padding(
+        padding: const EdgeInsets.only(right: AppConstants.tableColumnGap),
+        child: Text(
+          text,
+          style: style,
+          maxLines: maxLines,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
     );
 
@@ -776,47 +766,38 @@ class _OrderCard extends StatelessWidget {
             children: [
               _OrderStatusBadge(status: status),
               const SizedBox(height: 8),
-              _CardField(
-                AppStrings.invoiceDateLabel,
-                DisplayFormat.formatInvoiceDate(order.invoiceDate),
-              ),
-              _CardField(AppStrings.invoiceNumberLabel, order.invoiceNumber),
-              _CardField(
-                AppStrings.orderNumberLabel,
+              Text(
                 order.orderNumber.literal,
+                style: Theme.of(context).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
               ),
-              _CardField(AppStrings.customerLabel, order.customer),
-              _CardField(AppStrings.customerPhoneLabel, order.customerPhone),
+              const SizedBox(height: 4),
+              Text(
+                AppStrings.accountLine(
+                  order.invoiceNumber,
+                  DisplayFormat.formatInvoiceDate(order.invoiceDate),
+                ),
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    order.customer,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                  Text(
+                    DisplayFormat.formatPhone(order.customerPhone),
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ],
+              ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _CardField extends StatelessWidget {
-  const _CardField(this.label, this.value);
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: textTheme.bodySmall?.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
-          Text(value, style: textTheme.bodyLarge),
-        ],
       ),
     );
   }
@@ -885,7 +866,7 @@ class _OrderStatusBadge extends StatelessWidget {
         Flexible(
           child: Text(
             current.label,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: visual.foreground,

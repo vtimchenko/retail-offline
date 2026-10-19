@@ -220,7 +220,8 @@ void main() {
 
       expect(controller.phase, FulfilmentUiPhase.ready);
       expect(find.text('Магазин Тест'), findsOneWidget);
-      expect(find.text('Store_01-A'), findsOneWidget);
+      expect(find.text('Store_01-A'), findsNothing);
+      expect(controller.session!.dataset.dbName, 'Store_01-A');
       expect(find.text('Імпортувати JSON'), findsNothing);
       expect(find.byType(BackButton), findsNothing);
       expect(find.text('Вибір магазину'), findsNothing);

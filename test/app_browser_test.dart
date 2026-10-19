@@ -132,7 +132,7 @@ void main() {
     expect(good.isParcel, isFalse);
     expect(restored.statusOf('ORD-1'), OrderStatus.noSelection);
     expect(find.text('Магазин Тест'), findsOneWidget);
-    expect(find.text('Store_01-A'), findsOneWidget);
+    expect(find.text('Store_01-A'), findsNothing);
     expect(find.byKey(const Key('json-view-orders')), findsOneWidget);
     expect(find.text('Імпортувати JSON'), findsNothing);
     expect(find.byType(BackButton), findsNothing);

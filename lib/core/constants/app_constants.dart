@@ -10,6 +10,9 @@ abstract final class AppConstants {
 
   /// Maximum width of the orders list and order details on wide screens.
   static const double ordersMaxWidth = 1100;
+
+  /// Horizontal gap between columns in the desktop tables.
+  static const double tableColumnGap = 8;
 }
 
 abstract final class AppStrings {
@@ -18,7 +21,7 @@ abstract final class AppStrings {
   static const String viewOrders = 'Переглянути замовлення';
 
   // ---- JSON import ----
-  static const String jsonScreenTitle = 'JSON-режим';
+  static const String jsonScreenTitle = 'Видача замовлень';
   static const String jsonLoading = 'Завантаження збережених даних…';
   static const String jsonEmptyTitle = 'Немає збережених даних';
   static const String jsonEmptyMessage =
@@ -30,6 +33,13 @@ abstract final class AppStrings {
   static const String jsonDbNameLabel = 'База даних';
   static const String jsonDateCreateLabel = 'Дата створення';
   static const String jsonOrdersLabel = 'Замовлень';
+  static const String jsonIssuedCountLabel = 'Видано';
+
+  static String ordersWithStore(String storeName) =>
+      '$ordersScreenTitle — $storeName';
+
+  static String accountLine(String invoiceNumber, String formattedDate) =>
+      'Рахунок №$invoiceNumber від $formattedDate';
   static const String jsonBlockedTitle = 'Роботу призупинено';
   static const String jsonReadFailed = 'Не вдалося прочитати збережені дані.';
   static const String jsonImportRejected =
@@ -72,7 +82,7 @@ abstract final class AppStrings {
   // ---- Orders ----
   static const String ordersScreenTitle = 'Замовлення';
   static const String invoiceDateLabel = 'Дата';
-  static const String invoiceNumberLabel = 'Накладна';
+  static const String invoiceNumberLabel = '№ рахунка';
   static const String orderNumberLabel = 'Номер замовлення';
   static const String customerLabel = 'Клієнт';
   static const String customerPhoneLabel = 'Телефон';
@@ -96,6 +106,7 @@ abstract final class AppStrings {
   static const String parcelGoodLabel = 'Посилка';
   static const String serviceGoodLabel = 'Послуга';
   static const String parcelTtnLabel = 'ТТН посилки';
+  static const String meestTtnLabel = 'Meest ТТН';
   static const String serviceLineProgress = 'Не потребує вибору';
   static const String jsonOrderNotFoundTitle = 'Замовлення не знайдено';
   static const String jsonOrderNotFoundMessage =
@@ -122,6 +133,12 @@ abstract final class AppStrings {
 
   // ---- Serial selection ----
   static const String completeService = 'Завершити обслуговування';
+  static const String completeServiceNotReady =
+      'Кнопка стане доступною, коли для всіх товарів буде обрано потрібну кількість.';
+  static const String completeServiceIssued =
+      'Обслуговування цього замовлення вже завершено.';
+  static const String completeServiceExported =
+      'Замовлення вже в експорті. Повторити завершення не можна.';
   static const String shareFile = 'Поширити файл';
   static const String excelShareFailed = 'Не вдалося поширити файл';
   static const String orderStatusLabel = 'Статус';

@@ -116,7 +116,6 @@ abstract final class AppStrings {
   static const String jsonGoodNotFoundTitle = 'Товар не знайдено';
   static const String jsonGoodNotFoundMessage =
       'Цього товару немає в поточному замовленні.';
-  static const String remainingQuantityLabel = 'Залишилось';
   static const String jsonSerialInsufficientStock = 'Цього залишку вже немає.';
   static const String jsonSerialLineComplete =
       'Для цього товару вже обрано потрібну кількість.';
@@ -150,7 +149,6 @@ abstract final class AppStrings {
   static const String serialNumberLabel = 'Серійний номер';
   static const String availableQuantityLabel = 'Доступно';
   static const String selectedQuantityLabel = 'Обрано';
-  static const String requiredQuantityLabel = 'Потрібна кількість';
   static const String serialSearchLabel = 'Пошук серійного номера';
   static const String serialSearchHint = 'Пошук за серійним номером…';
   static const String addSerial = 'Додати';

@@ -130,6 +130,36 @@ abstract final class AppStrings {
       'Замовлення вже видано або експортовано. Змінити вибір не можна.';
   static const String jsonSerialInsufficientReserved =
       'Обраної кількості на цій адресі вже немає.';
+  static const String jsonSerialInvalidExcise =
+      'Некоректний номер акцизної марки.';
+  static const String jsonSerialUnexpectedExcise =
+      'Акцизна марка не потрібна для цього товару.';
+  static const String jsonSerialExciseQuantity =
+      'Для алкоголю акцизна марка потрібна на кожну одиницю.';
+  static const String jsonSerialExciseNotFound =
+      'Цієї акцизної марки немає в обраному резервуванні.';
+  static const String jsonSerialAlcoholRemove =
+      'Для алкоголю приберіть конкретну акцизну марку.';
+  static const String jsonSerialNotAlcohol =
+      'Для цього товару акцизна марка не використовується.';
+
+  static String exciseStampInUse(String stamp) =>
+      'Акцизна марка $stamp вже використовується в іншому резервуванні.';
+  static const String exciseStampTitle = 'Акцизна марка';
+  static const String exciseStampLabel = 'Номер акцизної марки';
+  static const String exciseStampHint = 'QWER123456';
+  static const String exciseStampCancel = 'Скасувати';
+  static const String exciseStampConfirm = 'Підтвердити';
+  static const String exciseStampInvalid =
+      'Номер акцизної марки має містити рівно 4 латинські літери та 6 цифр.';
+  static const String exciseStampMissing = 'Вкажіть номер акцизної марки.';
+
+  static String jsonExportExciseRejected(List<String> orderIds) {
+    final quoted = orderIds.map((id) => '«$id»').join(', ');
+    final where = orderIds.length == 1 ? 'У замовленні' : 'У замовленнях';
+    return 'Не вдалося сформувати JSON-файл. $where $quoted '
+        'відсутня або некоректна акцизна марка.';
+  }
 
   // ---- Serial selection ----
   static const String completeService = 'Завершити обслуговування';

@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:retail_offline/domain/fulfilment/fulfilment_session.dart';
 import 'package:retail_offline/models/exact_integer.dart';
 import 'package:retail_offline/models/retail_dataset.dart';
+import 'package:retail_offline/persistence/dataset_fingerprint.dart';
+import 'package:retail_offline/persistence/export_consistency.dart';
 import 'package:retail_offline/services/json/cumulative_json_export.dart';
 import 'package:retail_offline/services/json/precision_json_decoder.dart';
 
@@ -1036,6 +1038,302 @@ void main() {
       expect(() => write('1', '1e2'), throwsArgumentError);
     });
   });
+
+  group('excise stamps', () {
+    const stampA = 'QWER123456';
+    const stampB = 'ASDF654321';
+    const productId = '1290564103789190763';
+
+    test('alcohol goods include ExciseStamp and regular goods omit it', () {
+      final session = mustIssue(
+        mustReserve(
+          mustOpen(
+            data(
+              stocks: [
+                slot(productId: productId, quantity: 2),
+                slot(productId: '200', serialNumber: 'SN-2'),
+              ],
+              orders: [
+                order(goods: [good(productId: productId, alcohol: true)]),
+                order(
+                  orderId: 'ORD-2',
+                  orderNumber: '2',
+                  goods: [good(productId: '200')],
+                ),
+              ],
+            ),
+          ),
+          'ORD-1',
+          productId: productId,
+          exciseStamps: const [stampA],
+        ),
+      );
+      final both = mustIssue(
+        mustReserve(session, 'ORD-2', productId: '200', serialNumber: 'SN-2'),
+        'ORD-2',
+      );
+      final firstBytes = Uint8List.fromList(
+        asPrepared(export.prepare(session, now: stampClock)).document.bytes,
+      );
+
+      final prepared = asPrepared(export.prepare(both, now: stampClock));
+      final text = utf8.decode(prepared.document.bytes);
+      final root = _decode(text);
+      final orders = (root.fields['orders']! as JsonArrayValue).items;
+      final alcohol = orders.first as JsonObjectValue;
+      final regular = orders.last as JsonObjectValue;
+      final alcoholGood =
+          (alcohol.fields['Goods']! as JsonArrayValue).items.single
+              as JsonObjectValue;
+      final regularGood =
+          (regular.fields['Goods']! as JsonArrayValue).items.single
+              as JsonObjectValue;
+
+      expect(alcohol.fields['OrderID'], isA<JsonStringValue>());
+      expect(
+        (alcoholGood.fields['ProductID']! as JsonNumberValue).literal,
+        productId,
+      );
+      expect(alcoholGood.fields.keys.toList(), [
+        'ProductID',
+        'Quantity',
+        'Address',
+        'SerialNumber',
+        'ExciseStamp',
+      ]);
+      expect(
+        (alcoholGood.fields['ExciseStamp']! as JsonStringValue).text,
+        stampA,
+      );
+      expect(regularGood.fields.containsKey('ExciseStamp'), isFalse);
+      expect(text, contains('"ProductID": $productId'));
+      expect(text, isNot(contains('"ProductID": "$productId"')));
+      expect(firstBytes, isNot(prepared.document.bytes));
+      const fingerprint =
+          '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+      expect(
+        ExportConsistency.matches(
+          dataset: prepared.pendingSession.dataset,
+          fingerprint: fingerprint,
+          snapshot: prepared.pendingSession.capture(
+            datasetFingerprint: fingerprint,
+          ),
+          document: prepared.document,
+          digest: DatasetFingerprint.of(prepared.document.bytes),
+        ),
+        isTrue,
+      );
+      final broken = Uint8List.fromList(
+        utf8.encode(text.replaceFirst(stampA, 'qwer123456')),
+      );
+      expect(
+        ExportConsistency.matches(
+          dataset: prepared.pendingSession.dataset,
+          fingerprint: fingerprint,
+          snapshot: prepared.pendingSession.capture(
+            datasetFingerprint: fingerprint,
+          ),
+          document: ExportDocument(
+            filename: prepared.document.filename,
+            bytes: broken,
+            dateCreate: prepared.document.dateCreate,
+          ),
+          digest: DatasetFingerprint.of(broken),
+        ),
+        isFalse,
+      );
+    });
+
+    test('different stamps on one serial stay separate records', () {
+      const stampC = 'ZXCV112233';
+      final opened = mustOpen(
+        data(
+          stocks: [slot(quantity: 3)],
+          orders: [
+            order(goods: [good(quantity: 3, alcohol: true)]),
+          ],
+        ),
+      );
+      final reserved = mustReserve(
+        opened,
+        'ORD-1',
+        quantity: 3,
+        exciseStamps: const [stampA, stampB, stampC],
+      );
+      final issued = mustIssue(reserved);
+      final goods = export.reconstruct(issued).orders.single.goods;
+
+      expect(export.reconstruct(issued).failures, isEmpty);
+      expect(goods, hasLength(3));
+      expectGood(
+        goods[0],
+        productId: '100',
+        quantity: 1,
+        address: 'A-01',
+        serialNumber: 'SN-1',
+        exciseStamp: stampA,
+      );
+      expectGood(
+        goods[1],
+        productId: '100',
+        quantity: 1,
+        address: 'A-01',
+        serialNumber: 'SN-1',
+        exciseStamp: stampB,
+      );
+      expectGood(
+        goods[2],
+        productId: '100',
+        quantity: 1,
+        address: 'A-01',
+        serialNumber: 'SN-1',
+        exciseStamp: stampC,
+      );
+    });
+
+    test('exact stamp removal exports only the stamps that remain', () {
+      const stampC = 'ZXCV112233';
+      final opened = mustOpen(
+        data(
+          stocks: [slot(quantity: 3)],
+          orders: [
+            order(goods: [good(quantity: 3, alcohol: true)]),
+          ],
+        ),
+      );
+      final reserved = mustReserve(
+        opened,
+        'ORD-1',
+        quantity: 3,
+        exciseStamps: const [stampA, stampB, stampC],
+      );
+      final removed = switch (reserved.removeAlcoholUnit(
+        orderId: 'ORD-1',
+        productId: '100',
+        address: 'A-01',
+        serialNumber: 'SN-1',
+        exciseStamp: stampB,
+      )) {
+        UnitsRemoved(:final session) => session,
+        final other => fail('remove failed: $other'),
+      };
+      const replacement = 'HHHH445566';
+      final completed = mustReserve(
+        removed,
+        'ORD-1',
+        exciseStamps: const [replacement],
+      );
+      final issued = mustIssue(completed);
+      final reconstructed = export.reconstruct(issued);
+      final goods = reconstructed.orders.single.goods;
+
+      expect(reconstructed.failures, isEmpty);
+      expect(goods, hasLength(3));
+      expectGood(
+        goods[0],
+        productId: '100',
+        quantity: 1,
+        address: 'A-01',
+        serialNumber: 'SN-1',
+        exciseStamp: stampA,
+      );
+      expectGood(
+        goods[1],
+        productId: '100',
+        quantity: 1,
+        address: 'A-01',
+        serialNumber: 'SN-1',
+        exciseStamp: stampC,
+      );
+      expectGood(
+        goods[2],
+        productId: '100',
+        quantity: 1,
+        address: 'A-01',
+        serialNumber: 'SN-1',
+        exciseStamp: replacement,
+      );
+      expect(goods.any((good) => good.exciseStamp == stampB), isFalse);
+    });
+
+    test('a second export still carries the earlier excise stamp', () {
+      final opened = mustOpen(
+        data(
+          stocks: [slot(quantity: 2)],
+          orders: [
+            order(orderId: 'ORD-A', goods: [good(alcohol: true)]),
+            order(
+              orderId: 'ORD-B',
+              orderNumber: '2',
+              goods: [good(alcohol: true)],
+            ),
+          ],
+        ),
+      );
+      final first = asPrepared(
+        export.prepare(
+          mustIssue(
+            mustReserve(opened, 'ORD-A', exciseStamps: const [stampA]),
+            'ORD-A',
+          ),
+          now: stampClock,
+        ),
+      );
+      final historical = Uint8List.fromList(first.document.bytes);
+      final second = asPrepared(
+        export.prepare(
+          mustIssue(
+            mustReserve(
+              first.pendingSession,
+              'ORD-B',
+              exciseStamps: const [stampB],
+            ),
+            'ORD-B',
+          ),
+          now: () => DateTime(2026, 10, 14, 16, 8, 9),
+        ),
+      );
+      final text = utf8.decode(second.document.bytes);
+
+      expect(first.document.bytes, historical);
+      expect(text, contains('"OrderID": "ORD-A"'));
+      expect(text, contains('"OrderID": "ORD-B"'));
+      expect(text, contains('"ExciseStamp": "$stampA"'));
+      expect(text, contains('"ExciseStamp": "$stampB"'));
+      expect(second.pendingSession.statusOf('ORD-A'), OrderStatus.exported);
+    });
+
+    test('a missing or invalid excise stamp rejects that order', () {
+      final missing = exciseStampExportFailure(
+        isAlko: true,
+        orderId: 'ORD-9',
+        productId: productId,
+        quantity: 1,
+        stamps: const [],
+      );
+      final invalid = exciseStampExportFailure(
+        isAlko: true,
+        orderId: 'ORD-9',
+        productId: productId,
+        quantity: 1,
+        stamps: const ['АBCD123456'],
+      );
+      final regular = exciseStampExportFailure(
+        isAlko: false,
+        orderId: 'ORD-9',
+        productId: '100',
+        quantity: 2,
+        stamps: const [],
+      );
+
+      expect(missing!.reason, CumulativeExportReason.invalidExciseStamp);
+      expect(missing.orderId, 'ORD-9');
+      expect(missing.productId, productId);
+      expect(invalid!.orderId, 'ORD-9');
+      expect(invalid.reason, CumulativeExportReason.invalidExciseStamp);
+      expect(regular, isNull);
+    });
+  });
 }
 
 DateTime Function() unreadClock() {
@@ -1066,6 +1364,7 @@ DatasetGood good({
   String productId = '100',
   int quantity = 1,
   bool service = false,
+  bool alcohol = false,
   String? parcelTtn,
 }) {
   return DatasetGood(
@@ -1076,6 +1375,7 @@ DatasetGood good({
     amountMinorUnits: 100,
     isServiceGood: service,
     isParcel: parcelTtn != null,
+    isAlko: alcohol,
     parcelTtn: parcelTtn,
   );
 }
@@ -1282,6 +1582,7 @@ FulfilmentSession mustReserve(
   String address = 'A-01',
   String serialNumber = 'SN-1',
   int quantity = 1,
+  List<String> exciseStamps = const [],
 }) {
   return switch (session.reserve(
     orderId: orderId,
@@ -1289,6 +1590,7 @@ FulfilmentSession mustReserve(
     address: address,
     serialNumber: serialNumber,
     quantity: quantity,
+    exciseStamps: exciseStamps,
   )) {
     ReserveApplied(:final session) => session,
     final other => fail('reserve failed: $other'),
@@ -1324,11 +1626,13 @@ void expectGood(
   required int quantity,
   required String address,
   required String serialNumber,
+  String? exciseStamp,
 }) {
   expect(good.productId.literal, productId);
   expect(good.quantity, quantity);
   expect(good.address, address);
   expect(good.serialNumber, serialNumber);
+  expect(good.exciseStamp, exciseStamp);
 }
 
 List<({String? orderId, CumulativeExportReason reason, String? productId})>

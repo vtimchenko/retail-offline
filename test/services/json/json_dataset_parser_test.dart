@@ -51,6 +51,7 @@ String _good({
   String? amount = '324.50',
   String? isServiceGood = '0',
   String? isParcel = '0',
+  String? isAlko,
   String? parcelTtnRaw,
   String? meestTtnRaw,
   String? extra,
@@ -65,6 +66,7 @@ String _good({
   _field('Amount', amount),
   _field('isServiceGood', isServiceGood),
   _field('isParcel', isParcel),
+  _field('isAlko', isAlko),
   if (parcelTtnRaw != null) _field('ParcelTTN', parcelTtnRaw),
   if (meestTtnRaw != null) _field('MeestTTN', meestTtnRaw),
   ?extra,
@@ -198,6 +200,7 @@ void main() {
       expect(order.totalMinorUnits, 32450);
       expect(good.isServiceGood, isFalse);
       expect(good.isParcel, isFalse);
+      expect(good.isAlko, isFalse);
       expect(good.parcelTtn, isNull);
       expect(good.meestTtn, isNull);
     });
@@ -874,6 +877,43 @@ void main() {
       expect(error.message, contains('«isParcel»'));
       expect(error.message, contains('поєднання'));
     });
+
+    test('reads isAlko 0 and 1 and defaults a missing flag to 0', () {
+      final regular = _parse(
+        _dataset(
+          ordersArray: '[${_order(goodsArray: '[${_good(isAlko: '0')}]')}]',
+        ),
+      );
+      final alcohol = _parse(
+        _dataset(
+          ordersArray: '[${_order(goodsArray: '[${_good(isAlko: '1')}]')}]',
+        ),
+      );
+      final omitted = _parse(
+        _dataset(ordersArray: '[${_order(goodsArray: '[${_good()}]')}]'),
+      );
+
+      expect(regular.orders.single.goods.single.isAlko, isFalse);
+      expect(alcohol.orders.single.goods.single.isAlko, isTrue);
+      expect(omitted.orders.single.goods.single.isAlko, isFalse);
+      expect(
+        alcohol.orders.single.goods.single.productId.literal,
+        bigProductId,
+      );
+    });
+
+    for (final literal in ['2', '0.0', '"1"', 'true', 'null', '-1']) {
+      test('rejects isAlko $literal', () {
+        final error = _invalid(
+          _dataset(
+            ordersArray:
+                '[${_order(goodsArray: '[${_good(isAlko: literal)}]')}]',
+          ),
+        );
+        expect(error.message, contains('«isAlko»'));
+        expect(error.message, contains('0 або 1'));
+      });
+    }
 
     for (final literal in ['2', '0.0', '"1"', 'true', '-1']) {
       test('rejects isServiceGood $literal', () {

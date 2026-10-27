@@ -57,6 +57,8 @@ class DatasetStock {
 ///
 /// [isServiceGood] and [isParcel] come from JSON integers `0` and `1`.
 /// The combination `(1, 1)` is rejected before a value is built.
+/// [isAlko] comes from the optional JSON integer `isAlko`. A missing field
+/// is false. `1` means each reserved unit of this line needs an excise stamp.
 /// [parcelTtn] is set only for parcel goods. [meestTtn] keeps the original
 /// string when the field is present, including an empty string; a missing
 /// field is `null`.
@@ -70,6 +72,7 @@ class DatasetGood {
     required this.amountMinorUnits,
     required this.isServiceGood,
     required this.isParcel,
+    this.isAlko = false,
     this.parcelTtn,
     this.meestTtn,
   }) : assert(quantity >= 1 && quantity <= DatasetLimits.maxQuantity),
@@ -89,6 +92,11 @@ class DatasetGood {
   final int amountMinorUnits;
   final bool isServiceGood;
   final bool isParcel;
+
+  /// Whether this line is an alcohol product.
+  ///
+  /// False when the imported JSON omitted `isAlko`.
+  final bool isAlko;
   final String? parcelTtn;
   final String? meestTtn;
 
@@ -102,6 +110,7 @@ class DatasetGood {
       other.amountMinorUnits == amountMinorUnits &&
       other.isServiceGood == isServiceGood &&
       other.isParcel == isParcel &&
+      other.isAlko == isAlko &&
       other.parcelTtn == parcelTtn &&
       other.meestTtn == meestTtn;
 
@@ -114,6 +123,7 @@ class DatasetGood {
     amountMinorUnits,
     isServiceGood,
     isParcel,
+    isAlko,
     parcelTtn,
     meestTtn,
   );

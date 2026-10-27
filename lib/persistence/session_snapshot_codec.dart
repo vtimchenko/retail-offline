@@ -66,9 +66,11 @@ class SessionSnapshotCodec {
 
   /// Reads [source] and returns the snapshot or the first problem found.
   ///
-  /// Unknown object fields, missing fields, non-canonical numbers, and a
-  /// schema version other than [SessionSnapshot.supportedSchemaVersion] are
-  /// rejected. The snapshot lists keep the order of the JSON arrays.
+  /// Unknown object fields, missing required fields, non-canonical numbers,
+  /// and a schema version other than
+  /// [SessionSnapshot.supportedSchemaVersion] are rejected. `exciseStamps`
+  /// may be absent on a reservation; that absence is an empty list. The
+  /// snapshot lists keep the order of the JSON arrays.
   SnapshotDecodeResult decode(String source) {
     final JsonValue root;
     try {
@@ -190,14 +192,35 @@ void _writeReservations(StringBuffer buffer, List<SnapshotReservation> values) {
     _entryField(buffer, 'productId', jsonEncode(entry.productId));
     _entryField(buffer, 'address', jsonEncode(entry.address));
     _entryField(buffer, 'serialNumber', jsonEncode(entry.serialNumber));
-    buffer
-      ..write('      "quantity": ')
-      ..write(entry.quantity)
-      ..write('\n    }');
+    if (entry.exciseStamps.isEmpty) {
+      buffer
+        ..write('      "quantity": ')
+        ..write(entry.quantity)
+        ..write('\n    }');
+    } else {
+      buffer
+        ..write('      "quantity": ')
+        ..write(entry.quantity)
+        ..write(',\n      "exciseStamps": ');
+      _writeExciseStamps(buffer, entry.exciseStamps);
+      buffer.write('\n    }');
+    }
     if (i + 1 != values.length) buffer.write(',');
     buffer.write('\n');
   }
   buffer.write('  ]');
+}
+
+void _writeExciseStamps(StringBuffer buffer, List<String> stamps) {
+  buffer.write('[\n');
+  for (var i = 0; i < stamps.length; i++) {
+    buffer
+      ..write('        ')
+      ..write(jsonEncode(stamps[i]));
+    if (i + 1 != stamps.length) buffer.write(',');
+    buffer.write('\n');
+  }
+  buffer.write('      ]');
 }
 
 void _entryField(StringBuffer buffer, String key, String jsonValue) {
@@ -227,9 +250,10 @@ void _writeStrings(StringBuffer buffer, List<String> values) {
 
 SnapshotDecodeRejected? _objectShape(
   JsonObjectValue object,
-  List<String> fields,
-) {
-  final allowed = fields.toSet();
+  List<String> fields, {
+  Set<String> optional = const {},
+}) {
+  final allowed = fields.toSet()..addAll(optional);
   for (final key in object.fields.keys) {
     if (!allowed.contains(key)) {
       return SnapshotDecodeRejected(
@@ -325,7 +349,11 @@ _Read<List<SnapshotReservation>> _readReservations(JsonValue value) {
         ),
       );
     }
-    final shape = _objectShape(item, _reservationFields);
+    final shape = _objectShape(
+      item,
+      _reservationFields,
+      optional: const {'exciseStamps'},
+    );
     if (shape != null) return (value: null, rejected: shape);
     final orderId = _readRequiredString(item, 'orderId');
     if (orderId.rejected != null) {
@@ -347,6 +375,10 @@ _Read<List<SnapshotReservation>> _readReservations(JsonValue value) {
     if (quantity.rejected != null) {
       return (value: null, rejected: quantity.rejected);
     }
+    final stamps = _readExciseStamps(item.fields['exciseStamps']);
+    if (stamps.rejected != null) {
+      return (value: null, rejected: stamps.rejected);
+    }
     entries.add(
       SnapshotReservation(
         orderId: orderId.value!,
@@ -354,6 +386,7 @@ _Read<List<SnapshotReservation>> _readReservations(JsonValue value) {
         address: address.value!,
         serialNumber: serialNumber.value!,
         quantity: quantity.value!,
+        exciseStamps: List.unmodifiable(stamps.value!),
       ),
     );
   }
@@ -372,6 +405,33 @@ _Read<String> _readRequiredString(JsonObjectValue object, String field) {
     );
   }
   return (value: value.text, rejected: null);
+}
+
+_Read<List<String>> _readExciseStamps(JsonValue? value) {
+  if (value == null) return (value: const [], rejected: null);
+  if (value is! JsonArrayValue) {
+    return (
+      value: null,
+      rejected: const SnapshotDecodeRejected(
+        SnapshotDecodeReason.malformedStructure,
+        detail: 'exciseStamps',
+      ),
+    );
+  }
+  final stamps = <String>[];
+  for (final item in value.items) {
+    if (item is! JsonStringValue) {
+      return (
+        value: null,
+        rejected: const SnapshotDecodeRejected(
+          SnapshotDecodeReason.malformedStructure,
+          detail: 'exciseStamps',
+        ),
+      );
+    }
+    stamps.add(item.text);
+  }
+  return (value: stamps, rejected: null);
 }
 
 _Read<int> _readQuantity(JsonValue value) {

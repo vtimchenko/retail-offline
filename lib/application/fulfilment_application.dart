@@ -147,6 +147,7 @@ class FulfilmentApplication {
     required String address,
     required String serialNumber,
     required int quantity,
+    List<String> exciseStamps = const [],
   }) {
     return _mutate((session) {
       final result = session.reserve(
@@ -155,6 +156,7 @@ class FulfilmentApplication {
         address: address,
         serialNumber: serialNumber,
         quantity: quantity,
+        exciseStamps: exciseStamps,
       );
       return (
         result: result,
@@ -179,6 +181,33 @@ class FulfilmentApplication {
         address: address,
         serialNumber: serialNumber,
         quantity: quantity,
+      );
+      return (
+        result: result,
+        candidate: result is UnitsRemoved ? result.session : null,
+        unchanged: false,
+      );
+    });
+  }
+
+  /// Removes one alcohol unit by its stamp, then persists the candidate.
+  ///
+  /// A rejection, including a stamp that is not on the slot, does not write.
+  /// A revision conflict blocks this instance. The caller reloads and retries.
+  Future<FulfilmentCommandResult<RemoveUnitsResult>> removeAlcoholUnit({
+    required String orderId,
+    required String productId,
+    required String address,
+    required String serialNumber,
+    required String exciseStamp,
+  }) {
+    return _mutate((session) {
+      final result = session.removeAlcoholUnit(
+        orderId: orderId,
+        productId: productId,
+        address: address,
+        serialNumber: serialNumber,
+        exciseStamp: exciseStamp,
       );
       return (
         result: result,

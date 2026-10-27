@@ -12,6 +12,7 @@ import '../../domain/fulfilment/fulfilment_session.dart';
 import '../../models/retail_dataset.dart';
 import '../../services/file/cumulative_export_share.dart';
 import '../../services/file/export_share.dart';
+import '../../services/json/cumulative_json_export.dart';
 import '../../widgets/status_message.dart';
 import '../json_import/fulfilment_block_message.dart';
 import 'dataset_order_search.dart';
@@ -100,9 +101,9 @@ class _JsonOrdersScreenState extends State<JsonOrdersScreen> {
           AppStrings.jsonExportUnchanged,
           key: const Key('json-export-unchanged'),
         );
-      case FulfilmentExportRejected():
+      case FulfilmentExportRejected(:final failures):
         _showNotice(
-          AppStrings.jsonExportRejected,
+          _exportRejectedMessage(failures),
           key: const Key('json-export-rejected'),
         );
       case FulfilmentExportBlocked() when phase == FulfilmentUiPhase.ready:
@@ -877,4 +878,16 @@ class _OrderStatusBadge extends StatelessWidget {
       ],
     );
   }
+}
+
+String _exportRejectedMessage(List<CumulativeExportFailure> failures) {
+  final orderIds = <String>[];
+  for (final failure in failures) {
+    if (failure.reason != CumulativeExportReason.invalidExciseStamp) continue;
+    final orderId = failure.orderId;
+    if (orderId == null || orderIds.contains(orderId)) continue;
+    orderIds.add(orderId);
+  }
+  if (orderIds.isEmpty) return AppStrings.jsonExportRejected;
+  return AppStrings.jsonExportExciseRejected(orderIds);
 }

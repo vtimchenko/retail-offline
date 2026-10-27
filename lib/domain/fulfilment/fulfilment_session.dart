@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/exact_integer.dart';
 import '../../models/retail_dataset.dart';
+import 'excise_stamp.dart';
 import 'session_snapshot.dart';
 
 /// Fulfilment overlay for one active [RetailDataset].
@@ -132,7 +133,7 @@ class FulfilmentSession {
   final RetailDataset dataset;
 
   final _Catalogue _catalogue;
-  final Map<LineKey, Map<StockKey, int>> _reservations;
+  final Map<LineKey, Map<StockKey, _ReservedSlot>> _reservations;
   final Map<StockKey, int> _reservedByStock;
   final Set<String> _issuedOrderIds;
   final Set<String> _exportedOrderIds;
@@ -209,8 +210,8 @@ class FulfilmentSession {
     final slots = _reservations[LineKey(orderId, productId)];
     if (slots == null) return 0;
     var total = 0;
-    for (final quantity in slots.values) {
-      total += quantity;
+    for (final slot in slots.values) {
+      total += slot.quantity;
     }
     return total;
   }
@@ -223,11 +224,32 @@ class FulfilmentSession {
     required String serialNumber,
   }) {
     return _reservations[LineKey(orderId, productId)]?[StockKey(
-          productId: productId,
-          address: address,
-          serialNumber: serialNumber,
-        )] ??
+              productId: productId,
+              address: address,
+              serialNumber: serialNumber,
+            )]
+            ?.quantity ??
         0;
+  }
+
+  /// Excise stamps on this slot, oldest reservation first.
+  ///
+  /// Empty when the line holds nothing here or the product is not alcohol.
+  /// The list is the one stored with the reservation. One stamp belongs to
+  /// one reserved unit. A quantity above one keeps one stamp per unit.
+  List<String> slotExciseStamps({
+    required String orderId,
+    required String productId,
+    required String address,
+    required String serialNumber,
+  }) {
+    return _reservations[LineKey(orderId, productId)]?[StockKey(
+              productId: productId,
+              address: address,
+              serialNumber: serialNumber,
+            )]
+            ?.exciseStamps ??
+        const [];
   }
 
   /// Reserves up to [quantity] units of one manually chosen slot.
@@ -242,6 +264,17 @@ class FulfilmentSession {
   /// [LineComplete]. A slot with nothing free, while the line still needs
   /// units, returns [InsufficientStock]. Neither changes this session.
   ///
+  /// An alcohol line requires [exciseStamps] to contain one valid stamp per
+  /// requested unit. Those stamps are stored on this slot, after any stamps
+  /// already held there. A request that would reserve fewer units than it
+  /// asked for is rejected, so a stamp is never dropped. Each canonical
+  /// stamp may be held by only one reserved unit in this dataset, including
+  /// units on issued and exported orders and units inside the same request.
+  /// A duplicate leaves this session unchanged. A regular line rejects a
+  /// non-empty [exciseStamps] list and otherwise keeps the partial apply
+  /// described above. Lowercase Latin letters in a stamp are stored as
+  /// uppercase.
+  ///
   /// On success the result's session shares [dataset] and the stock and
   /// order indexes. Only the reservation overlay is copied, in proportion
   /// to lines and slots that already hold reservations, plus the edited
@@ -252,6 +285,7 @@ class FulfilmentSession {
     required String address,
     required String serialNumber,
     required int quantity,
+    List<String> exciseStamps = const [],
   }) {
     if (quantity < 1) {
       return const ReserveRejected(ReserveRejection.invalidQuantity);
@@ -296,8 +330,32 @@ class FulfilmentSession {
     }
 
     final applied = min(quantity, min(remaining, available));
+    if (good.isAlko) {
+      final normalized = _canonicalStamps(exciseStamps);
+      if (normalized == null || normalized.length != quantity) {
+        return const ReserveRejected(ReserveRejection.invalidExciseStamp);
+      }
+      if (applied != quantity) {
+        return const ReserveRejected(ReserveRejection.exciseQuantity);
+      }
+      final duplicate = _conflictingStamp(normalized);
+      if (duplicate != null) {
+        return ReserveRejected(
+          ReserveRejection.duplicateExciseStamp,
+          exciseStamp: duplicate,
+        );
+      }
+      return ReserveApplied(
+        session: _add(line, stock, applied, normalized),
+        requestedQuantity: quantity,
+        appliedQuantity: applied,
+      );
+    }
+    if (exciseStamps.isNotEmpty) {
+      return const ReserveRejected(ReserveRejection.unexpectedExciseStamp);
+    }
     return ReserveApplied(
-      session: _add(line, stock, applied),
+      session: _add(line, stock, applied, const []),
       requestedQuantity: quantity,
       appliedQuantity: applied,
     );
@@ -307,7 +365,8 @@ class FulfilmentSession {
   ///
   /// The freed units are available to other orders on the returned session.
   /// Removing more than the line holds on that slot leaves this session
-  /// unchanged.
+  /// unchanged. An alcohol line is rejected here: each of its units is
+  /// removed by [removeAlcoholUnit], which names the stamp.
   RemoveUnitsResult removeUnits({
     required String orderId,
     required String productId,
@@ -322,24 +381,73 @@ class FulfilmentSession {
       return const RemoveUnitsRejected(RemoveRejection.unknownOrder);
     }
     final line = LineKey(orderId, productId);
-    if (!_catalogue.goodsByLine.containsKey(line)) {
+    final good = _catalogue.goodsByLine[line];
+    if (good == null) {
       return const RemoveUnitsRejected(RemoveRejection.unknownLine);
     }
     if (_isLocked(orderId)) {
       return const RemoveUnitsRejected(RemoveRejection.orderLocked);
+    }
+    if (good.isAlko) {
+      return const RemoveUnitsRejected(RemoveRejection.alcoholRequiresStamp);
     }
     final stock = StockKey(
       productId: productId,
       address: address,
       serialNumber: serialNumber,
     );
-    final current = _reservations[line]?[stock] ?? 0;
+    final current = _reservations[line]?[stock]?.quantity ?? 0;
     if (current < quantity) {
       return const RemoveUnitsRejected(RemoveRejection.insufficientReserved);
     }
     return UnitsRemoved(
       session: _subtract(line, stock, quantity),
       removedQuantity: quantity,
+    );
+  }
+
+  /// Releases the one alcohol unit that holds [exciseStamp] on this slot.
+  ///
+  /// [exciseStamp] is compared in canonical form. The matching unit and its
+  /// stamp are removed, and the other stamps on the same serial stay in
+  /// their existing order. A stamp that is not on this slot, a regular
+  /// product, and a locked order leave this session unchanged.
+  RemoveUnitsResult removeAlcoholUnit({
+    required String orderId,
+    required String productId,
+    required String address,
+    required String serialNumber,
+    required String exciseStamp,
+  }) {
+    if (!_catalogue.ordersById.containsKey(orderId)) {
+      return const RemoveUnitsRejected(RemoveRejection.unknownOrder);
+    }
+    final line = LineKey(orderId, productId);
+    final good = _catalogue.goodsByLine[line];
+    if (good == null) {
+      return const RemoveUnitsRejected(RemoveRejection.unknownLine);
+    }
+    if (_isLocked(orderId)) {
+      return const RemoveUnitsRejected(RemoveRejection.orderLocked);
+    }
+    if (!good.isAlko) {
+      return const RemoveUnitsRejected(RemoveRejection.notAlcohol);
+    }
+    final canonical = ExciseStamp.normalize(exciseStamp);
+    final stock = StockKey(
+      productId: productId,
+      address: address,
+      serialNumber: serialNumber,
+    );
+    final slot = _reservations[line]?[stock];
+    if (canonical == null ||
+        slot == null ||
+        !slot.exciseStamps.contains(canonical)) {
+      return const RemoveUnitsRejected(RemoveRejection.exciseStampNotFound);
+    }
+    return UnitsRemoved(
+      session: _dropStamp(line, stock, canonical),
+      removedQuantity: 1,
     );
   }
 
@@ -363,14 +471,16 @@ class FulfilmentSession {
       return OrderCleared(session: this, clearedQuantity: 0);
     }
 
-    final reservations = Map<LineKey, Map<StockKey, int>>.of(_reservations);
+    final reservations = Map<LineKey, Map<StockKey, _ReservedSlot>>.of(
+      _reservations,
+    );
     final reservedByStock = Map<StockKey, int>.of(_reservedByStock);
     var cleared = 0;
     for (final line in lineKeys) {
       final slots = reservations.remove(line)!;
       for (final entry in slots.entries) {
-        cleared += entry.value;
-        final next = reservedByStock[entry.key]! - entry.value;
+        cleared += entry.value.quantity;
+        final next = reservedByStock[entry.key]! - entry.value.quantity;
         if (next == 0) {
           reservedByStock.remove(entry.key);
         } else {
@@ -522,9 +632,10 @@ class FulfilmentSession {
   }
 
   RestoreSessionResult _restoreFrom(SessionSnapshot snapshot) {
-    final reservations = <LineKey, Map<StockKey, int>>{};
+    final reservations = <LineKey, Map<StockKey, _ReservedSlot>>{};
     final reservedByStock = <StockKey, int>{};
     final seen = <_ReservationIdentity>{};
+    final occupiedStamps = <String>{};
 
     for (final entry in snapshot.reservations) {
       final violation = _reservationViolation(
@@ -532,6 +643,7 @@ class FulfilmentSession {
         reservations,
         reservedByStock,
         seen,
+        occupiedStamps,
       );
       if (violation != null) return SessionRestoreRejected(violation);
     }
@@ -554,7 +666,7 @@ class FulfilmentSession {
         catalogue: _catalogue,
         reservations: Map.unmodifiable({
           for (final entry in reservations.entries)
-            entry.key: Map<StockKey, int>.unmodifiable(entry.value),
+            entry.key: Map<StockKey, _ReservedSlot>.unmodifiable(entry.value),
         }),
         reservedByStock: Map<StockKey, int>.unmodifiable(reservedByStock),
         issuedOrderIds: Set.unmodifiable(issued),
@@ -565,9 +677,10 @@ class FulfilmentSession {
 
   SessionRestoreViolation? _reservationViolation(
     SnapshotReservation entry,
-    Map<LineKey, Map<StockKey, int>> reservations,
+    Map<LineKey, Map<StockKey, _ReservedSlot>> reservations,
     Map<StockKey, int> reservedByStock,
     Set<_ReservationIdentity> seen,
+    Set<String> occupiedStamps,
   ) {
     if (entry.quantity < 1 || entry.quantity > DatasetLimits.maxQuantity) {
       return _entryViolation(SessionRestoreReason.invalidQuantity, entry);
@@ -603,8 +716,8 @@ class FulfilmentSession {
     var lineTotal = entry.quantity;
     final existing = reservations[line];
     if (existing != null) {
-      for (final quantity in existing.values) {
-        lineTotal += quantity;
+      for (final slot in existing.values) {
+        lineTotal += slot.quantity;
       }
     }
     if (lineTotal > good.quantity) {
@@ -614,8 +727,25 @@ class FulfilmentSession {
     if (stockTotal > stockQuantity) {
       return _entryViolation(SessionRestoreReason.stockOverReserved, entry);
     }
-    reservations.putIfAbsent(line, () => <StockKey, int>{})[stock] =
-        entry.quantity;
+    final stamps = _acceptedStamps(good, entry);
+    if (stamps == null) {
+      return _entryViolation(
+        good.isAlko
+            ? SessionRestoreReason.invalidExciseStamp
+            : SessionRestoreReason.unexpectedExciseStamp,
+        entry,
+      );
+    }
+    for (final stamp in stamps) {
+      if (!occupiedStamps.add(stamp)) {
+        return _entryViolation(
+          SessionRestoreReason.duplicateExciseStamp,
+          entry,
+        );
+      }
+    }
+    reservations.putIfAbsent(line, () => <StockKey, _ReservedSlot>{})[stock] =
+        _ReservedSlot(entry.quantity, stamps);
     reservedByStock[stock] = stockTotal;
     return null;
   }
@@ -623,7 +753,7 @@ class FulfilmentSession {
   SessionRestoreViolation? _issuedViolation(
     String orderId,
     Set<String> issued,
-    Map<LineKey, Map<StockKey, int>> reservations,
+    Map<LineKey, Map<StockKey, _ReservedSlot>> reservations,
   ) {
     if (!issued.add(orderId)) {
       return SessionRestoreViolation(
@@ -675,7 +805,7 @@ class FulfilmentSession {
 
   bool _meetsIssueRequirement(
     DatasetOrder order,
-    Map<LineKey, Map<StockKey, int>> reservations,
+    Map<LineKey, Map<StockKey, _ReservedSlot>> reservations,
   ) {
     for (final good in order.goods) {
       if (good.isServiceGood) continue;
@@ -683,8 +813,8 @@ class FulfilmentSession {
           reservations[LineKey(order.orderId, good.productId.literal)];
       var reserved = 0;
       if (slots != null) {
-        for (final quantity in slots.values) {
-          reserved += quantity;
+        for (final slot in slots.values) {
+          reserved += slot.quantity;
         }
       }
       if (reserved != good.quantity) return false;
@@ -701,12 +831,12 @@ class FulfilmentSession {
         final slots = _reservations[line];
         if (slots == null) continue;
         visited.add(line);
-        final pending = Map<StockKey, int>.of(slots);
+        final pending = Map<StockKey, _ReservedSlot>.of(slots);
         for (final stock in dataset.stocks) {
           final key = StockKey.fromStock(stock);
-          final quantity = pending.remove(key);
-          if (quantity == null) continue;
-          entries.add(_snapshotEntry(line.orderId, key, quantity));
+          final held = pending.remove(key);
+          if (held == null) continue;
+          entries.add(_snapshotEntry(line.orderId, key, held));
         }
         for (final leftover in pending.entries) {
           entries.add(
@@ -727,14 +857,15 @@ class FulfilmentSession {
   SnapshotReservation _snapshotEntry(
     String orderId,
     StockKey stock,
-    int quantity,
+    _ReservedSlot held,
   ) {
     return SnapshotReservation(
       orderId: orderId,
       productId: stock.productId,
       address: stock.address,
       serialNumber: stock.serialNumber,
-      quantity: quantity,
+      quantity: held.quantity,
+      exciseStamps: held.exciseStamps,
     );
   }
 
@@ -776,11 +907,24 @@ class FulfilmentSession {
     return List.unmodifiable(blocking);
   }
 
-  FulfilmentSession _add(LineKey line, StockKey stock, int applied) {
+  FulfilmentSession _add(
+    LineKey line,
+    StockKey stock,
+    int applied,
+    List<String> exciseStamps,
+  ) {
     assert(applied > 0);
-    final slots = Map<StockKey, int>.of(_reservations[line] ?? const {});
-    slots[stock] = (slots[stock] ?? 0) + applied;
-    final reservations = Map<LineKey, Map<StockKey, int>>.of(_reservations);
+    assert(exciseStamps.isEmpty || exciseStamps.length == applied);
+    final slots = Map<StockKey, _ReservedSlot>.of(
+      _reservations[line] ?? const {},
+    );
+    final current = slots[stock];
+    slots[stock] = current == null
+        ? _ReservedSlot(applied, exciseStamps)
+        : current.add(applied, exciseStamps);
+    final reservations = Map<LineKey, Map<StockKey, _ReservedSlot>>.of(
+      _reservations,
+    );
     reservations[line] = Map.unmodifiable(slots);
     final reservedByStock = Map<StockKey, int>.of(_reservedByStock);
     reservedByStock[stock] = (_reservedByStock[stock] ?? 0) + applied;
@@ -791,14 +935,16 @@ class FulfilmentSession {
   }
 
   FulfilmentSession _subtract(LineKey line, StockKey stock, int quantity) {
-    final slots = Map<StockKey, int>.of(_reservations[line]!);
-    final nextSlot = slots[stock]! - quantity;
-    if (nextSlot == 0) {
+    final slots = Map<StockKey, _ReservedSlot>.of(_reservations[line]!);
+    final nextSlot = slots[stock]!.release(quantity);
+    if (nextSlot == null) {
       slots.remove(stock);
     } else {
       slots[stock] = nextSlot;
     }
-    final reservations = Map<LineKey, Map<StockKey, int>>.of(_reservations);
+    final reservations = Map<LineKey, Map<StockKey, _ReservedSlot>>.of(
+      _reservations,
+    );
     if (slots.isEmpty) {
       reservations.remove(line);
     } else {
@@ -817,8 +963,53 @@ class FulfilmentSession {
     );
   }
 
+  FulfilmentSession _dropStamp(LineKey line, StockKey stock, String stamp) {
+    final slots = Map<StockKey, _ReservedSlot>.of(_reservations[line]!);
+    final nextSlot = slots[stock]!.without(stamp);
+    if (nextSlot == null) {
+      slots.remove(stock);
+    } else {
+      slots[stock] = nextSlot;
+    }
+    final reservations = Map<LineKey, Map<StockKey, _ReservedSlot>>.of(
+      _reservations,
+    );
+    if (slots.isEmpty) {
+      reservations.remove(line);
+    } else {
+      reservations[line] = Map.unmodifiable(slots);
+    }
+    final reservedByStock = Map<StockKey, int>.of(_reservedByStock);
+    final nextStock = reservedByStock[stock]! - 1;
+    if (nextStock == 0) {
+      reservedByStock.remove(stock);
+    } else {
+      reservedByStock[stock] = nextStock;
+    }
+    return _copy(
+      reservations: Map.unmodifiable(reservations),
+      reservedByStock: Map.unmodifiable(reservedByStock),
+    );
+  }
+
+  /// Canonical stamp from [stamps] that this dataset already holds, or that
+  /// appears twice in [stamps]. Null when every stamp is free.
+  String? _conflictingStamp(List<String> stamps) {
+    final occupied = <String>{};
+    for (final slots in _reservations.values) {
+      for (final slot in slots.values) {
+        occupied.addAll(slot.exciseStamps);
+      }
+    }
+    final incoming = <String>{};
+    for (final stamp in stamps) {
+      if (!incoming.add(stamp) || occupied.contains(stamp)) return stamp;
+    }
+    return null;
+  }
+
   FulfilmentSession _copy({
-    Map<LineKey, Map<StockKey, int>>? reservations,
+    Map<LineKey, Map<StockKey, _ReservedSlot>>? reservations,
     Map<StockKey, int>? reservedByStock,
     Set<String>? issuedOrderIds,
     Set<String>? exportedOrderIds,
@@ -1031,9 +1222,12 @@ final class LineComplete extends ReserveResult {
 
 /// [FulfilmentSession.reserve] rejected the request before changing state.
 final class ReserveRejected extends ReserveResult {
-  const ReserveRejected(this.reason);
+  const ReserveRejected(this.reason, {this.exciseStamp});
 
   final ReserveRejection reason;
+
+  /// Canonical stamp when [reason] is [ReserveRejection.duplicateExciseStamp].
+  final String? exciseStamp;
 
   @override
   String toString() => 'ReserveRejected($reason)';
@@ -1048,6 +1242,18 @@ enum ReserveRejection {
   parcelMismatch,
   serviceLine,
   orderLocked,
+
+  /// An alcohol reservation has a missing, malformed, or wrong-sized stamp list.
+  invalidExciseStamp,
+
+  /// A regular product was given an excise stamp.
+  unexpectedExciseStamp,
+
+  /// An alcohol request would reserve fewer units than the stamps it supplied.
+  exciseQuantity,
+
+  /// A canonical stamp is already held, or is repeated in this request.
+  duplicateExciseStamp,
 }
 
 /// Result of [FulfilmentSession.removeUnits].
@@ -1080,6 +1286,15 @@ enum RemoveRejection {
   unknownLine,
   orderLocked,
   insufficientReserved,
+
+  /// [FulfilmentSession.removeUnits] was called for an alcohol line.
+  alcoholRequiresStamp,
+
+  /// [FulfilmentSession.removeAlcoholUnit] was called for a regular product.
+  notAlcohol,
+
+  /// The stamp is missing or does not belong to this reservation slot.
+  exciseStampNotFound,
 }
 
 /// Result of [FulfilmentSession.clearOrder].
@@ -1392,6 +1607,74 @@ enum SessionRestoreReason {
 
   /// An exported id is not issued.
   exportedNotIssued,
+
+  /// An alcohol reservation has no stamp, too many stamps, or a bad stamp.
+  invalidExciseStamp,
+
+  /// A regular reservation carries an excise stamp.
+  unexpectedExciseStamp,
+
+  /// The same canonical stamp is stored on more than one reserved unit.
+  ///
+  /// Restore stops. The snapshot is not rewritten and the duplicate is not
+  /// dropped.
+  duplicateExciseStamp,
+}
+
+/// Units of one stock slot held by one order line, with their stamps.
+///
+/// [exciseStamps] is empty for a regular product. For alcohol its length is
+/// [quantity], oldest unit first.
+@immutable
+class _ReservedSlot {
+  _ReservedSlot(this.quantity, List<String> exciseStamps)
+    : exciseStamps = List.unmodifiable(exciseStamps) {
+    assert(quantity >= 1);
+    assert(exciseStamps.isEmpty || exciseStamps.length == quantity);
+  }
+
+  final int quantity;
+  final List<String> exciseStamps;
+
+  _ReservedSlot add(int units, List<String> stamps) {
+    return _ReservedSlot(quantity + units, [...exciseStamps, ...stamps]);
+  }
+
+  /// Drops [units] from the end. Returns null when the slot is gone.
+  ///
+  /// Regular slots have no stamps. Alcohol units are removed with [without].
+  _ReservedSlot? release(int units) {
+    final next = quantity - units;
+    if (next <= 0) return null;
+    if (exciseStamps.isEmpty) return _ReservedSlot(next, const []);
+    return _ReservedSlot(next, exciseStamps.sublist(0, next));
+  }
+
+  /// Drops the unit that holds [stamp]. Returns null when the slot is gone.
+  _ReservedSlot? without(String stamp) {
+    final next = [...exciseStamps]..remove(stamp);
+    if (next.isEmpty) return null;
+    return _ReservedSlot(next.length, next);
+  }
+}
+
+List<String>? _canonicalStamps(List<String> stamps) {
+  final normalized = <String>[];
+  for (final stamp in stamps) {
+    final value = ExciseStamp.normalize(stamp);
+    if (value == null) return null;
+    normalized.add(value);
+  }
+  return normalized;
+}
+
+/// Canonical stamps for [entry], or null when they do not belong on [good].
+List<String>? _acceptedStamps(DatasetGood good, SnapshotReservation entry) {
+  final stamps = entry.exciseStamps;
+  if (!good.isAlko) return stamps.isEmpty ? const [] : null;
+  if (stamps.length != entry.quantity) return null;
+  if (stamps.any((stamp) => !ExciseStamp.isValid(stamp))) return null;
+  return stamps;
 }
 
 @immutable

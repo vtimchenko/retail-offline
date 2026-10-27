@@ -467,7 +467,221 @@ void main() {
     final restored = await reload(databaseName);
     expect(restored.session!.dataset.dbName, 'Store_01-A');
   });
+
+  test('a legacy snapshot without excise stamps stays readable', () async {
+    final handle = await _imported(databaseName, datasetBytes());
+    expect(
+      await reserve(handle.app, quantity: 1),
+      isA<FulfilmentCommitted<ReserveResult>>(),
+    );
+
+    final stored = await IndexedDbProbe(databaseName)
+        .read(IndexedDbFulfilmentSchema.session);
+    final snapshot = stored!['snapshot']! as String;
+    expect(snapshot, isNot(contains('exciseStamps')));
+    expect(
+      handle.app.session!.dataset.orders.first.goods.single.isAlko,
+      isFalse,
+    );
+
+    final restored = await reload(databaseName);
+    expect(reserved(restored), 1);
+    expect(
+      restored.session!.slotExciseStamps(
+        orderId: 'ORD-1',
+        productId: productId,
+        address: address,
+        serialNumber: serial,
+      ),
+      isEmpty,
+    );
+  });
+
+  test(
+    'excise stamps survive reload and a failed commit writes nothing',
+    () async {
+      final bytes = Uint8List.fromList(utf8.encode(_alcoholDataset));
+      final handle = await _imported(databaseName, bytes);
+      expect(
+        await _reserveStamp(handle.app, 'qwer123456'),
+        isA<FulfilmentCommitted<ReserveResult>>(),
+      );
+      expect(
+        await _reserveStamp(handle.app, 'ASDF654321'),
+        isA<FulfilmentCommitted<ReserveResult>>(),
+      );
+
+      var restored = await reload(databaseName);
+      expect(_stamps(restored), ['QWER123456', 'ASDF654321']);
+      expect(reserved(restored), 2);
+      expect(
+        restored.session!.dataset.orders.single.goods.single.isAlko,
+        isTrue,
+      );
+
+      final blocked = IndexedDbFulfilmentRepository(databaseName: databaseName);
+      final blockedApp = FulfilmentApplication(repository: blocked);
+      expect(await blockedApp.load(), isA<LoadReady>());
+      blocked.abortNextTransaction = true;
+      expect(
+        await _reserveStamp(blockedApp, 'ZXCV111111'),
+        isA<FulfilmentBlocked<ReserveResult>>(),
+      );
+
+      restored = await reload(databaseName);
+      expect(restored.revision, 3);
+      expect(_stamps(restored), ['QWER123456', 'ASDF654321']);
+      expect(reserved(restored), 2);
+    },
+  );
+
+  test('a conflicting tab cannot replace the stored excise stamp', () async {
+    final bytes = Uint8List.fromList(utf8.encode(_alcoholDataset));
+    final first = IndexedDbFulfilmentRepository(databaseName: databaseName);
+    final second = IndexedDbFulfilmentRepository(databaseName: databaseName);
+    final appA = FulfilmentApplication(repository: first);
+    final appB = FulfilmentApplication(repository: second);
+    expect(await appA.importDataset(bytes), isA<FulfilmentImported>());
+    expect(await appB.load(), isA<LoadReady>());
+
+    expect(
+      await _reserveStamp(appA, 'QWER123456'),
+      isA<FulfilmentCommitted<ReserveResult>>(),
+    );
+    final conflict = await _reserveStamp(appB, 'ASDF654321');
+
+    expect(conflict, isA<FulfilmentBlocked<ReserveResult>>());
+    expect(appB.block, PersistenceBlock.revisionConflict);
+    expect(await appB.reload(), isA<LoadReady>());
+    expect(_stamps(appB), ['QWER123456']);
+    expect(appB.revision, 2);
+  });
+
+  test('a reloaded session rejects a duplicate excise stamp', () async {
+    final bytes = Uint8List.fromList(utf8.encode(_alcoholDataset));
+    final handle = await _imported(databaseName, bytes);
+    expect(
+      await _reserveStamp(handle.app, 'QWER123456'),
+      isA<FulfilmentCommitted<ReserveResult>>(),
+    );
+
+    final restored = await reload(databaseName);
+    final duplicate = await _reserveStamp(restored, 'qwer123456');
+
+    expect(duplicate, isA<FulfilmentDomainRejected<ReserveResult>>());
+    final rejected =
+        (duplicate as FulfilmentDomainRejected<ReserveResult>).result
+            as ReserveRejected;
+    expect(rejected.reason, ReserveRejection.duplicateExciseStamp);
+    expect(rejected.exciseStamp, 'QWER123456');
+
+    final again = await reload(databaseName);
+    expect(again.revision, restored.revision);
+    expect(_stamps(again), ['QWER123456']);
+    expect(reserved(again), 1);
+  });
+
+  test('concurrent tabs reload before a duplicate stamp is judged', () async {
+    final bytes = Uint8List.fromList(utf8.encode(_alcoholDataset));
+    final first = IndexedDbFulfilmentRepository(databaseName: databaseName);
+    final second = IndexedDbFulfilmentRepository(databaseName: databaseName);
+    final appA = FulfilmentApplication(repository: first);
+    final appB = FulfilmentApplication(repository: second);
+    expect(await appA.importDataset(bytes), isA<FulfilmentImported>());
+    expect(await appB.load(), isA<LoadReady>());
+
+    expect(
+      await _reserveStamp(appA, 'QWER123456'),
+      isA<FulfilmentCommitted<ReserveResult>>(),
+    );
+    final conflict = await _reserveStamp(appB, 'qwer123456');
+    final whileBlocked = await _reserveStamp(appB, 'ASDF654321');
+
+    expect(conflict, isA<FulfilmentBlocked<ReserveResult>>());
+    expect(whileBlocked, isA<FulfilmentBlocked<ReserveResult>>());
+    expect(appB.block, PersistenceBlock.revisionConflict);
+
+    final stored = await reload(databaseName);
+    expect(stored.revision, 2);
+    expect(_stamps(stored), ['QWER123456']);
+
+    expect(await appB.reload(), isA<LoadReady>());
+    final retry = await _reserveStamp(appB, 'QWER123456');
+    expect(retry, isA<FulfilmentDomainRejected<ReserveResult>>());
+    final rejected =
+        (retry as FulfilmentDomainRejected<ReserveResult>).result
+            as ReserveRejected;
+    expect(rejected.reason, ReserveRejection.duplicateExciseStamp);
+    expect(appB.revision, 2);
+    expect(_stamps(appB), ['QWER123456']);
+    expect(reserved(appB), 1);
+  });
+
+  test('an alcohol export commits atomically and reloads the stamps', () async {
+    final bytes = Uint8List.fromList(utf8.encode(_alcoholDataset));
+    final handle = await _imported(databaseName, bytes);
+    expect(
+      await _reserveStamp(handle.app, 'QWER123456'),
+      isA<FulfilmentCommitted<ReserveResult>>(),
+    );
+    expect(
+      await _reserveStamp(handle.app, 'ASDF654321'),
+      isA<FulfilmentCommitted<ReserveResult>>(),
+    );
+    expect(
+      await _reserveStamp(handle.app, 'ZXCV112233'),
+      isA<FulfilmentCommitted<ReserveResult>>(),
+    );
+    expect(
+      await handle.app.issueOrder('ORD-1'),
+      isA<FulfilmentCommitted<IssueOrderResult>>(),
+    );
+    final issuedRevision = handle.app.revision;
+
+    handle.repository.abortNextTransaction = true;
+    final failed = await handle.app.commitCumulativeExport(
+      now: () => DateTime(2026, 10, 14, 15, 7, 22),
+    );
+    expect(failed, isA<FulfilmentExportFailed>());
+
+    var restored = await reload(databaseName);
+    expect(restored.revision, issuedRevision);
+    expect(restored.session!.statusOf('ORD-1'), OrderStatus.issued);
+    expect(_stamps(restored), ['QWER123456', 'ASDF654321', 'ZXCV112233']);
+    expect(
+      await IndexedDbProbe(databaseName)
+          .read(IndexedDbFulfilmentSchema.exports),
+      isNull,
+    );
+
+    final exported = await restored.commitCumulativeExport(
+      now: () => DateTime(2026, 10, 14, 15, 7, 22),
+    );
+    expect(exported, isA<FulfilmentExported>());
+    final document = (exported as FulfilmentExported).document;
+    final text = utf8.decode(document.bytes);
+    expect(text, contains('"ExciseStamp": "QWER123456"'));
+    expect(text, contains('"ExciseStamp": "ASDF654321"'));
+    expect(text, contains('"ExciseStamp": "ZXCV112233"'));
+
+    restored = await reload(databaseName);
+    expect(restored.revision, issuedRevision! + 1);
+    expect(restored.session!.statusOf('ORD-1'), OrderStatus.exported);
+    expect(_stamps(restored), ['QWER123456', 'ASDF654321', 'ZXCV112233']);
+    expect(restored.lastExport!.bytes, document.bytes);
+  });
 }
+
+const _alcoholDataset =
+    '{"storeName":"Магазин Тест","dbName":"Store_01-A",'
+    '"dateCreate":"20261003114618","stocks":[{"Address":"A-01",'
+    '"ProductID":$productId,"SerialNumber":"SN-0001","Quantity":5}],'
+    '"orders":[{"OrderID":"ORD-1","InvoiceDate":"20261003114618",'
+    '"InvoiceNumber":"ТЕСТ000001","OrderNumber":$orderNumber,'
+    '"Customer":"Тестовий Клієнт А","CustomerPhone":"0501112233","Goods":[{'
+    '"Product":"Алкоголь","ProductID":$productId,"Quantity":3,'
+    '"Price":324.50,"Amount":973.50,"isServiceGood":0,"isParcel":0,'
+    '"isAlko":1}]}]}';
 
 Uint8List datasetBytes({String dbName = 'Store_01-A'}) {
   return Uint8List.fromList(
@@ -508,6 +722,29 @@ Future<FulfilmentCommandResult<ReserveResult>> reserve(
     address: address,
     serialNumber: serial,
     quantity: quantity,
+  );
+}
+
+Future<FulfilmentCommandResult<ReserveResult>> _reserveStamp(
+  FulfilmentApplication app,
+  String stamp,
+) {
+  return app.reserve(
+    orderId: 'ORD-1',
+    productId: productId,
+    address: address,
+    serialNumber: serial,
+    quantity: 1,
+    exciseStamps: [stamp],
+  );
+}
+
+List<String> _stamps(FulfilmentApplication app) {
+  return app.session!.slotExciseStamps(
+    orderId: 'ORD-1',
+    productId: productId,
+    address: address,
+    serialNumber: serial,
   );
 }
 

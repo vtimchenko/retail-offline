@@ -891,6 +891,185 @@ void main() {
       );
       expect(find.byKey(const Key('json-serial-selection')), findsNothing);
     });
+
+    testWidgets('cancel leaves an alcohol serial unreserved', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, _alcoholBytes());
+      final attempts = repository.commitAttempts;
+      await _pumpSerial(tester, repository);
+      await _highlight(tester, 'A-01', 'SN-0001');
+
+      await tester.tap(find.byKey(const Key('json-serial-add')));
+      await _until(
+        tester,
+        () =>
+            find.byKey(const Key('excise-stamp-dialog')).evaluate().isNotEmpty,
+      );
+      expect(find.text('Акцизна марка'), findsWidgets);
+      expect(find.text('Номер акцизної марки'), findsOneWidget);
+      expect(find.text('Скасувати'), findsOneWidget);
+      expect(find.text('Підтвердити'), findsOneWidget);
+      expect(_confirmEnabled(tester), isFalse);
+
+      await tester.tap(find.byKey(const Key('excise-stamp-cancel')));
+      await _until(
+        tester,
+        () => find.byKey(const Key('excise-stamp-dialog')).evaluate().isEmpty,
+      );
+
+      expect(repository.commitAttempts, attempts);
+      expect(
+        find.byKey(const Key('json-serial-selected-empty')),
+        findsOneWidget,
+      );
+      expect(find.text('Обрано 0 з 2'), findsWidgets);
+    });
+
+    testWidgets('a valid stamp is stored and shown with its serial', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, _alcoholBytes());
+      await _pumpSerial(tester, repository);
+      await _confirmStamp(tester, 'qwer123456');
+      await _until(
+        tester,
+        () => find.text('SN-0001 — QWER123456').evaluate().isNotEmpty,
+      );
+
+      expect(find.text('SN-0001 — QWER123456'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(
+                const ValueKey((
+                  'json-selected-qty',
+                  'A-01',
+                  'SN-0001',
+                  'QWER123456',
+                )),
+              ),
+            )
+            .data,
+        '1',
+      );
+      expect(find.text('Обрано 1 з 2'), findsWidgets);
+
+      await _confirmStamp(tester, 'ASDF654321');
+      await _until(
+        tester,
+        () => find.text('SN-0001 — ASDF654321').evaluate().isNotEmpty,
+      );
+      expect(find.text('SN-0001 — QWER123456'), findsOneWidget);
+      expect(find.text('SN-0001 — ASDF654321'), findsOneWidget);
+      expect(_removeEnabled(tester), isFalse);
+      expect(_perRowRemove(), findsNothing);
+
+      await _highlightSelectedStamp(tester, 'A-01', 'SN-0001', 'ASDF654321');
+      expect(_removeEnabled(tester), isTrue);
+
+      await tester.tap(find.byKey(const Key('json-serial-remove')));
+      await _until(
+        tester,
+        () => find.text('SN-0001 — ASDF654321').evaluate().isEmpty,
+      );
+      expect(find.text('SN-0001 — QWER123456'), findsOneWidget);
+      expect(find.text('Обрано 1 з 2'), findsWidgets);
+      expect(_removeEnabled(tester), isFalse);
+    });
+
+    testWidgets('a duplicate stamp is rejected and the row stays', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, _alcoholBytes());
+      await _pumpSerial(tester, repository);
+      await _confirmStamp(tester, 'QWER123456');
+      await _until(
+        tester,
+        () => find.text('SN-0001 — QWER123456').evaluate().isNotEmpty,
+      );
+      final attempts = repository.commitAttempts;
+
+      await _confirmStamp(tester, 'qwer123456');
+      await _until(
+        tester,
+        () => find
+            .text(
+              'Акцизна марка QWER123456 вже використовується в іншому резервуванні.',
+            )
+            .evaluate()
+            .isNotEmpty,
+      );
+
+      expect(find.text('SN-0001 — QWER123456'), findsOneWidget);
+      expect(find.text('Обрано 1 з 2'), findsWidgets);
+      expect(repository.commitAttempts, attempts);
+    });
+
+    testWidgets('an invalid excise stamp cannot be confirmed', (tester) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, _alcoholBytes());
+      await _pumpSerial(tester, repository);
+      await _highlight(tester, 'A-01', 'SN-0001');
+      await tester.tap(find.byKey(const Key('json-serial-add')));
+      await _until(
+        tester,
+        () => find.byKey(const Key('excise-stamp-field')).evaluate().isNotEmpty,
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('excise-stamp-field')),
+        '\u0410BCD123456',
+      );
+      await tester.pump();
+
+      expect(_stampText(tester), 'BCD123456');
+      expect(
+        find.text(
+          'Номер акцизної марки має містити рівно 4 латинські літери та 6 цифр.',
+        ),
+        findsOneWidget,
+      );
+      expect(_confirmEnabled(tester), isFalse);
+
+      await tester.enterText(
+        find.byKey(const Key('excise-stamp-field')),
+        'QWER12345',
+      );
+      await tester.pump();
+      expect(_confirmEnabled(tester), isFalse);
+
+      await tester.enterText(
+        find.byKey(const Key('excise-stamp-field')),
+        'QWER1234567',
+      );
+      await tester.pump();
+      expect(_stampText(tester), 'QWER123456');
+      expect(_confirmEnabled(tester), isTrue);
+    });
+
+    testWidgets('a narrow layout still shows the saved excise stamp', (
+      tester,
+    ) async {
+      final repository = MemoryFulfilmentRepository();
+      await _seed(repository, _alcoholBytes());
+      await _pumpSerial(tester, repository, size: const Size(390, 844));
+      await _confirmStamp(tester, 'QWER123456');
+      await _until(
+        tester,
+        () => find.text('SN-0001 — QWER123456').evaluate().isNotEmpty,
+      );
+
+      expect(find.text('SN-0001 — QWER123456'), findsOneWidget);
+      expect(_perRowRemove(), findsNothing);
+      await _highlightSelectedStamp(tester, 'A-01', 'SN-0001', 'QWER123456');
+      expect(_removeEnabled(tester), isTrue);
+      expect(
+        find.byKey(const Key('json-serial-selected-header')),
+        findsNothing,
+      );
+    });
   });
 }
 
@@ -1005,6 +1184,20 @@ Future<void> _highlight(
   await tester.tap(
     find.byKey(ValueKey(('json-available', address, serialNumber))),
   );
+  await tester.pump();
+}
+
+Future<void> _highlightSelectedStamp(
+  WidgetTester tester,
+  String address,
+  String serialNumber,
+  String stamp,
+) async {
+  final row = find.byKey(
+    ValueKey(('json-selected', address, serialNumber, stamp)),
+  );
+  await tester.ensureVisible(row);
+  await tester.tap(row);
   await tester.pump();
 }
 
@@ -1274,10 +1467,57 @@ String _line(
   int quantity, {
   String? parcelTtn,
   String? meestTtn,
+  bool alcohol = false,
 }) {
   final parcel = parcelTtn == null ? 0 : 1;
   final ttn = parcelTtn == null ? '' : ',"ParcelTTN":"$parcelTtn"';
   final meest = meestTtn == null ? '' : ',"MeestTTN":"$meestTtn"';
+  final alko = alcohol ? ',"isAlko":1' : '';
   return '{"Product":"$name","ProductID":$id,"Quantity":$quantity,'
-      '"Price":10.00,"Amount":10.00,"isServiceGood":0,"isParcel":$parcel$ttn$meest}';
+      '"Price":10.00,"Amount":10.00,"isServiceGood":0,"isParcel":$parcel$ttn$meest$alko}';
+}
+
+Uint8List _alcoholBytes() => _catalogue(
+  stocks: [_stock('A-01', productId, 'SN-0001', 5)],
+  orders: [
+    _order('ORD-1', '7', [_line('Алкоголь', productId, 2, alcohol: true)]),
+  ],
+);
+
+Future<void> _confirmStamp(WidgetTester tester, String stamp) async {
+  await _highlight(tester, 'A-01', 'SN-0001');
+  await tester.tap(find.byKey(const Key('json-serial-add')));
+  await _until(
+    tester,
+    () => find.byKey(const Key('excise-stamp-field')).evaluate().isNotEmpty,
+  );
+  await tester.enterText(find.byKey(const Key('excise-stamp-field')), stamp);
+  await tester.pump();
+  expect(_confirmEnabled(tester), isTrue);
+  await tester.tap(find.byKey(const Key('excise-stamp-confirm')));
+  await _until(
+    tester,
+    () => find.byKey(const Key('excise-stamp-dialog')).evaluate().isEmpty,
+  );
+}
+
+Finder _perRowRemove() {
+  return find.byWidgetPredicate(
+    (widget) =>
+        widget.key?.toString().contains('json-selected-remove') ?? false,
+  );
+}
+
+String _stampText(WidgetTester tester) {
+  return tester
+      .widget<TextField>(find.byKey(const Key('excise-stamp-field')))
+      .controller!
+      .text;
+}
+
+bool _confirmEnabled(WidgetTester tester) {
+  return tester
+          .widget<FilledButton>(find.byKey(const Key('excise-stamp-confirm')))
+          .onPressed !=
+      null;
 }

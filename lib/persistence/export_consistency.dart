@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../core/errors/dataset_parse_exception.dart';
+import '../domain/fulfilment/excise_stamp.dart';
 import '../domain/fulfilment/session_snapshot.dart';
 import '../models/retail_dataset.dart';
 import '../services/json/cumulative_json_export.dart';
@@ -23,6 +24,13 @@ abstract final class ExportConsistency {
     'Goods',
   ];
   static const _goodKeys = ['ProductID', 'Quantity', 'Address', 'SerialNumber'];
+  static const _alcoholGoodKeys = [
+    'ProductID',
+    'Quantity',
+    'Address',
+    'SerialNumber',
+    'ExciseStamp',
+  ];
 
   static final RegExp _canonicalInteger = RegExp(r'^(?:0|[1-9][0-9]*)$');
   static final RegExp _quantity = RegExp(r'^[1-9][0-9]{0,8}$');
@@ -131,7 +139,15 @@ abstract final class ExportConsistency {
   }
 
   static bool _goodAgrees(JsonObjectValue good) {
-    if (!_sameKeys(good, _goodKeys)) return false;
+    final stamp = good.fields['ExciseStamp'];
+    if (stamp == null) {
+      if (!_sameKeys(good, _goodKeys)) return false;
+    } else {
+      if (!_sameKeys(good, _alcoholGoodKeys)) return false;
+      if (stamp is! JsonStringValue || !ExciseStamp.isValid(stamp.text)) {
+        return false;
+      }
+    }
     final productId = good.fields['ProductID'];
     final quantity = good.fields['Quantity'];
     final address = good.fields['Address'];

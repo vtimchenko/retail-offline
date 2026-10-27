@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../domain/fulfilment/excise_stamp.dart';
 import '../../domain/fulfilment/fulfilment_session.dart';
 import '../../models/exact_integer.dart';
 import '../../models/retail_dataset.dart';
@@ -239,7 +240,7 @@ void _reconstructService(
       ),
     );
   }
-  _addGoods(grouped, good.productId, good.quantity, '', '');
+  _addGoods(grouped, good.productId, good.quantity, '', '', null);
 }
 
 void _reconstructStockLine(
@@ -279,13 +280,48 @@ void _reconstructStockLine(
       parcelMismatch = true;
     }
     scanned += quantity;
-    _addGoods(
-      grouped,
-      good.productId,
-      quantity,
-      stock.address,
-      stock.serialNumber,
+    final stamps = session.slotExciseStamps(
+      orderId: order.orderId,
+      productId: productId,
+      address: stock.address,
+      serialNumber: stock.serialNumber,
     );
+    final exciseFailure = exciseStampExportFailure(
+      isAlko: good.isAlko,
+      orderId: order.orderId,
+      productId: productId,
+      quantity: quantity,
+      stamps: stamps,
+    );
+    if (exciseFailure != null) {
+      failures.add(exciseFailure);
+    }
+    if (good.isAlko) {
+      final counts = <String, int>{};
+      for (final stamp in stamps) {
+        if (!ExciseStamp.isValid(stamp)) continue;
+        counts[stamp] = (counts[stamp] ?? 0) + 1;
+      }
+      for (final entry in counts.entries) {
+        _addGoods(
+          grouped,
+          good.productId,
+          entry.value,
+          stock.address,
+          stock.serialNumber,
+          entry.key,
+        );
+      }
+    } else {
+      _addGoods(
+        grouped,
+        good.productId,
+        quantity,
+        stock.address,
+        stock.serialNumber,
+        null,
+      );
+    }
   }
   if (parcelMismatch) {
     failures.add(
@@ -307,18 +343,21 @@ void _reconstructStockLine(
   }
 }
 
-/// Adds [quantity] to the single Goods entry for this key.
+/// Adds [quantity] to the Goods entry for this slot and stamp.
 ///
-/// A dataset cannot contain two stock rows with the same product, address,
-/// and serial, so a reachable session adds each key once.
+/// Regular goods use a null [exciseStamp] and keep the historical key of
+/// product, address, and serial. Alcohol goods include the stamp in that
+/// key, so two different stamps on one serial stay two records. Identical
+/// stamps on that serial add their quantities.
 void _addGoods(
   Map<_GoodsKey, ReconstructedExportGood> grouped,
   ExactInteger productId,
   int quantity,
   String address,
   String serialNumber,
+  String? exciseStamp,
 ) {
-  final key = _GoodsKey(productId.literal, address, serialNumber);
+  final key = _GoodsKey(productId.literal, address, serialNumber, exciseStamp);
   final existing = grouped[key];
   if (existing == null) {
     grouped[key] = ReconstructedExportGood(
@@ -326,6 +365,7 @@ void _addGoods(
       quantity: quantity,
       address: address,
       serialNumber: serialNumber,
+      exciseStamp: exciseStamp,
     );
     return;
   }
@@ -334,26 +374,66 @@ void _addGoods(
     quantity: existing.quantity + quantity,
     address: address,
     serialNumber: serialNumber,
+    exciseStamp: exciseStamp,
   );
+}
+
+/// Why [stamps] cannot be written for this reserved quantity.
+///
+/// Returns null when a regular line has no stamps, or an alcohol line has
+/// one canonical stamp per unit. [CumulativeJsonExport.prepare] records the
+/// failure and does not commit the export.
+@visibleForTesting
+CumulativeExportFailure? exciseStampExportFailure({
+  required bool isAlko,
+  required String orderId,
+  required String productId,
+  required int quantity,
+  required List<String> stamps,
+}) {
+  if (!isAlko) {
+    if (stamps.isEmpty) return null;
+    return CumulativeExportFailure(
+      reason: CumulativeExportReason.invalidExciseStamp,
+      orderId: orderId,
+      productId: productId,
+    );
+  }
+  if (stamps.length != quantity || stamps.any((s) => !ExciseStamp.isValid(s))) {
+    return CumulativeExportFailure(
+      reason: CumulativeExportReason.invalidExciseStamp,
+      orderId: orderId,
+      productId: productId,
+    );
+  }
+  return null;
 }
 
 @immutable
 class _GoodsKey {
-  const _GoodsKey(this.productId, this.address, this.serialNumber);
+  const _GoodsKey(
+    this.productId,
+    this.address,
+    this.serialNumber,
+    this.exciseStamp,
+  );
 
   final String productId;
   final String address;
   final String serialNumber;
+  final String? exciseStamp;
 
   @override
   bool operator ==(Object other) =>
       other is _GoodsKey &&
       other.productId == productId &&
       other.address == address &&
-      other.serialNumber == serialNumber;
+      other.serialNumber == serialNumber &&
+      other.exciseStamp == exciseStamp;
 
   @override
-  int get hashCode => Object.hash(productId, address, serialNumber);
+  int get hashCode =>
+      Object.hash(productId, address, serialNumber, exciseStamp);
 }
 
 String _exportJson({
@@ -441,9 +521,18 @@ void _writeGood(StringBuffer buffer, ReconstructedExportGood good) {
   _jsonField(buffer, 5, 'ProductID', good.productId.literal);
   _jsonField(buffer, 5, 'Quantity', good.quantity.toString());
   _jsonField(buffer, 5, 'Address', jsonEncode(good.address));
+  final stamp = good.exciseStamp;
+  if (stamp == null) {
+    buffer
+      ..write('          "SerialNumber": ')
+      ..write(jsonEncode(good.serialNumber))
+      ..write('\n        }');
+    return;
+  }
+  _jsonField(buffer, 5, 'SerialNumber', jsonEncode(good.serialNumber));
   buffer
-    ..write('          "SerialNumber": ')
-    ..write(jsonEncode(good.serialNumber))
+    ..write('          "ExciseStamp": ')
+    ..write(jsonEncode(stamp))
     ..write('\n        }');
 }
 
@@ -537,6 +626,9 @@ enum CumulativeExportReason {
 
   /// [FulfilmentSession.markOrdersExported] rejected an id that is not issued.
   notIssued,
+
+  /// An alcohol reservation is missing a stamp, or a stamp is not canonical.
+  invalidExciseStamp,
 }
 
 /// Exact bytes of one cumulative export file.
@@ -619,6 +711,7 @@ class ReconstructedExportGood {
     required this.quantity,
     required this.address,
     required this.serialNumber,
+    this.exciseStamp,
   });
 
   /// Dataset product token. It is not parsed as a number.
@@ -632,4 +725,9 @@ class ReconstructedExportGood {
 
   /// Stock serial, or an empty string for a service.
   final String serialNumber;
+
+  /// Canonical excise stamp for this goods record.
+  ///
+  /// Null for a regular product or a service. Those records omit `ExciseStamp`.
+  final String? exciseStamp;
 }

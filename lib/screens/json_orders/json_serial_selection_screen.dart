@@ -13,6 +13,7 @@ import '../../models/serial_selection.dart';
 import '../../widgets/status_message.dart';
 import '../json_import/fulfilment_block_message.dart';
 import '../orders/serial_search.dart';
+import 'excise_stamp_dialog.dart';
 
 /// Reserves one stock slot at a time for a JSON order line.
 ///
@@ -21,7 +22,10 @@ import '../orders/serial_search.dart';
 /// [FulfilmentSession], and derives available and selected rows from
 /// [FulfilmentSession.availableQuantity] and
 /// [FulfilmentSession.slotReservedQuantity]. Add and remove send one unit
-/// through [FulfilmentUiController].
+/// through [FulfilmentUiController]. An alcohol line asks for an excise
+/// stamp before that add is sent, and each reserved unit is its own row.
+/// The shared remove button releases the selected row. For alcohol that row
+/// names the stamp. Cancelling the dialog leaves the session unchanged.
 class JsonSerialSelectionScreen extends StatefulWidget {
   /// Creates selection for one goods line in the ambient session.
   const JsonSerialSelectionScreen({
@@ -106,14 +110,23 @@ class _JsonSerialSelectionScreenState extends State<JsonSerialSelectionScreen> {
   Future<void> _reserve(_Slot slot) async {
     final controller = FulfilmentScope.read(context);
     if (!_canReserve(controller, slot)) return;
+    final ready = _readyLine(controller);
+    final exciseStamps = <String>[];
+    if (ready != null && ready.good.isAlko) {
+      final stamp = await showExciseStampDialog(context);
+      if (!mounted || stamp == null) return;
+      exciseStamps.add(stamp);
+    }
+    if (!mounted) return;
     setState(() => _inlineError = null);
     try {
-      final result = await controller.reserve(
+      final result = await FulfilmentScope.read(context).reserve(
         orderId: widget.orderId,
         productId: widget.productId,
         address: slot.address,
         serialNumber: slot.serialNumber,
         quantity: 1,
+        exciseStamps: exciseStamps,
       );
       if (!mounted) return;
       _showReserve(result);
@@ -124,6 +137,11 @@ class _JsonSerialSelectionScreenState extends State<JsonSerialSelectionScreen> {
   }
 
   Future<void> _release(_Slot slot) async {
+    final stamp = slot.exciseStamp;
+    if (stamp != null) {
+      await _releaseStamp(slot, stamp);
+      return;
+    }
     final controller = FulfilmentScope.read(context);
     if (!_canRelease(controller, slot)) return;
     setState(() => _inlineError = null);
@@ -134,6 +152,26 @@ class _JsonSerialSelectionScreenState extends State<JsonSerialSelectionScreen> {
         address: slot.address,
         serialNumber: slot.serialNumber,
         quantity: 1,
+      );
+      if (!mounted) return;
+      _showRelease(result);
+    } on Object {
+      if (!mounted) return;
+      setState(() => _inlineError = null);
+    }
+  }
+
+  Future<void> _releaseStamp(_Slot slot, String stamp) async {
+    final controller = FulfilmentScope.read(context);
+    if (!_canRelease(controller, slot)) return;
+    setState(() => _inlineError = null);
+    try {
+      final result = await controller.removeAlcoholUnit(
+        orderId: widget.orderId,
+        productId: widget.productId,
+        address: slot.address,
+        serialNumber: slot.serialNumber,
+        exciseStamp: stamp,
       );
       if (!mounted) return;
       _showRelease(result);
@@ -544,16 +582,11 @@ class _ReadySelection extends StatelessWidget {
                           rows: [
                             for (final row in selected)
                               _StockTile(
-                                key: ValueKey((
-                                  'json-selected',
-                                  row.address,
-                                  row.serialNumber,
-                                )),
-                                quantityKey: ValueKey((
+                                key: _stockKey('json-selected', row),
+                                quantityKey: _stockKey(
                                   'json-selected-qty',
-                                  row.address,
-                                  row.serialNumber,
-                                )),
+                                  row,
+                                ),
                                 row: row,
                                 quantityLabel: AppStrings.selectedQuantityLabel,
                                 highlighted: shownSelected == row.slot,
@@ -823,7 +856,11 @@ class _StockTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _StockField(AppStrings.addressLabel, row.address),
-                _StockField(AppStrings.serialNumberLabel, row.serialNumber),
+                _StockField(
+                  AppStrings.serialNumberLabel,
+                  row.serialLabel,
+                  maxLines: 4,
+                ),
                 _StockField(
                   quantityLabel,
                   '${row.quantity}',
@@ -844,9 +881,10 @@ class _StockTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: _StockColumns(
             address: row.address,
-            serialNumber: row.serialNumber,
+            serialNumber: row.serialLabel,
             quantity: '${row.quantity}',
             quantityKey: quantityKey,
+            serialLines: 2,
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ),
@@ -863,6 +901,7 @@ class _StockColumns extends StatelessWidget {
     required this.style,
     this.quantityKey,
     this.maxLines = 1,
+    this.serialLines = 2,
   });
 
   final String address;
@@ -871,6 +910,7 @@ class _StockColumns extends StatelessWidget {
   final TextStyle? style;
   final Key? quantityKey;
   final int maxLines;
+  final int serialLines;
 
   @override
   Widget build(BuildContext context) {
@@ -898,7 +938,12 @@ class _StockColumns extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         cell(address, 3, lines: 2, gap: AppConstants.tableColumnGap),
-        cell(serialNumber, 4, lines: 2, gap: AppConstants.tableColumnGap),
+        cell(
+          serialNumber,
+          4,
+          lines: serialLines,
+          gap: AppConstants.tableColumnGap,
+        ),
         cell(quantity, 2, key: quantityKey, lines: maxLines, gap: 0),
       ],
     );
@@ -915,11 +960,17 @@ Color _selectedQuantityColor({
 }
 
 class _StockField extends StatelessWidget {
-  const _StockField(this.label, this.valueText, {this.valueKey});
+  const _StockField(
+    this.label,
+    this.valueText, {
+    this.valueKey,
+    this.maxLines = 4,
+  });
 
   final String label;
   final String valueText;
   final Key? valueKey;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -939,7 +990,7 @@ class _StockField extends StatelessWidget {
             valueText,
             key: valueKey,
             style: textTheme.bodyLarge,
-            maxLines: 4,
+            maxLines: maxLines,
             overflow: TextOverflow.ellipsis,
           ),
         ],
@@ -1102,19 +1153,23 @@ class _MissingBody extends StatelessWidget {
 
 @immutable
 class _Slot {
-  const _Slot(this.address, this.serialNumber);
+  const _Slot(this.address, this.serialNumber, [this.exciseStamp]);
 
   final String address;
   final String serialNumber;
+
+  /// Set for one reserved alcohol unit. Regular slots leave this null.
+  final String? exciseStamp;
 
   @override
   bool operator ==(Object other) =>
       other is _Slot &&
       other.address == address &&
-      other.serialNumber == serialNumber;
+      other.serialNumber == serialNumber &&
+      other.exciseStamp == exciseStamp;
 
   @override
-  int get hashCode => Object.hash(address, serialNumber);
+  int get hashCode => Object.hash(address, serialNumber, exciseStamp);
 }
 
 @immutable
@@ -1123,13 +1178,30 @@ class _StockRow {
     required this.address,
     required this.serialNumber,
     required this.quantity,
+    this.exciseStamp,
   });
 
   final String address;
   final String serialNumber;
   final int quantity;
 
-  _Slot get slot => _Slot(address, serialNumber);
+  /// Canonical stamp when this row is one reserved alcohol unit.
+  final String? exciseStamp;
+
+  _Slot get slot => _Slot(address, serialNumber, exciseStamp);
+
+  /// Serial text. An alcohol unit appends its stamp.
+  String get serialLabel {
+    final stamp = exciseStamp;
+    if (stamp == null) return serialNumber;
+    return '$serialNumber — $stamp';
+  }
+}
+
+Key _stockKey(String kind, _StockRow row) {
+  final stamp = row.exciseStamp;
+  if (stamp == null) return ValueKey((kind, row.address, row.serialNumber));
+  return ValueKey((kind, row.address, row.serialNumber, stamp));
 }
 
 DatasetOrder? _orderById(FulfilmentSession session, String orderId) {
@@ -1196,13 +1268,32 @@ List<_StockRow> _selectedRows(
       serialNumber: stock.serialNumber,
     );
     if (reserved == 0) continue;
-    rows.add(
-      _StockRow(
-        address: stock.address,
-        serialNumber: stock.serialNumber,
-        quantity: reserved,
-      ),
+    final stamps = session.slotExciseStamps(
+      orderId: orderId,
+      productId: productId,
+      address: stock.address,
+      serialNumber: stock.serialNumber,
     );
+    if (stamps.isEmpty) {
+      rows.add(
+        _StockRow(
+          address: stock.address,
+          serialNumber: stock.serialNumber,
+          quantity: reserved,
+        ),
+      );
+      continue;
+    }
+    for (final stamp in stamps) {
+      rows.add(
+        _StockRow(
+          address: stock.address,
+          serialNumber: stock.serialNumber,
+          quantity: 1,
+          exciseStamp: stamp,
+        ),
+      );
+    }
   }
   return rows;
 }
@@ -1246,7 +1337,7 @@ String? _reserveMessage(ReserveResult result) {
     ReserveApplied() => null,
     InsufficientStock() => AppStrings.jsonSerialInsufficientStock,
     LineComplete() => AppStrings.jsonSerialLineComplete,
-    ReserveRejected(:final reason) => switch (reason) {
+    ReserveRejected(:final reason, :final exciseStamp) => switch (reason) {
       ReserveRejection.invalidQuantity => AppStrings.jsonSerialInvalidQuantity,
       ReserveRejection.unknownOrder => AppStrings.jsonOrderNotFoundMessage,
       ReserveRejection.unknownLine => AppStrings.jsonGoodNotFoundMessage,
@@ -1254,6 +1345,13 @@ String? _reserveMessage(ReserveResult result) {
       ReserveRejection.parcelMismatch => AppStrings.jsonSerialParcelMismatch,
       ReserveRejection.serviceLine => AppStrings.jsonSerialServiceLine,
       ReserveRejection.orderLocked => AppStrings.jsonSerialOrderLocked,
+      ReserveRejection.invalidExciseStamp => AppStrings.jsonSerialInvalidExcise,
+      ReserveRejection.unexpectedExciseStamp =>
+        AppStrings.jsonSerialUnexpectedExcise,
+      ReserveRejection.exciseQuantity => AppStrings.jsonSerialExciseQuantity,
+      ReserveRejection.duplicateExciseStamp => AppStrings.exciseStampInUse(
+        exciseStamp ?? '',
+      ),
     },
   };
 }
@@ -1268,6 +1366,11 @@ String? _releaseMessage(RemoveUnitsResult result) {
       RemoveRejection.orderLocked => AppStrings.jsonSerialOrderLocked,
       RemoveRejection.insufficientReserved =>
         AppStrings.jsonSerialInsufficientReserved,
+      RemoveRejection.alcoholRequiresStamp =>
+        AppStrings.jsonSerialAlcoholRemove,
+      RemoveRejection.notAlcohol => AppStrings.jsonSerialNotAlcohol,
+      RemoveRejection.exciseStampNotFound =>
+        AppStrings.jsonSerialExciseNotFound,
     },
   };
 }

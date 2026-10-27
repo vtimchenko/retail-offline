@@ -42,6 +42,7 @@ class DatasetValidator {
   static const _amount = 'Amount';
   static const _isServiceGood = 'isServiceGood';
   static const _isParcel = 'isParcel';
+  static const _isAlko = 'isAlko';
   static const _parcelTtn = 'ParcelTTN';
   static const _meestTtn = 'MeestTTN';
 
@@ -178,6 +179,7 @@ class DatasetValidator {
     final amountMinorUnits = _requiredMoney(object, _amount, where);
     final isServiceGood = _requiredFlag(object, _isServiceGood, where);
     final isParcel = _requiredFlag(object, _isParcel, where);
+    final isAlko = _optionalFlag(object, _isAlko, where);
     if (isServiceGood && isParcel) {
       throw DatasetValidationException(
         DatasetMessages.invalidFlagCombination(where),
@@ -197,6 +199,7 @@ class DatasetValidator {
       amountMinorUnits: amountMinorUnits,
       isServiceGood: isServiceGood,
       isParcel: isParcel,
+      isAlko: isAlko,
       parcelTtn: parcelTtn,
       meestTtn: meestTtn,
     );
@@ -301,6 +304,16 @@ class DatasetValidator {
 
   bool _requiredFlag(JsonObjectValue object, String field, String where) {
     final value = _lookup(object, field, where);
+    return _flagValue(value, field, where);
+  }
+
+  /// Missing `isAlko` is a regular product. A present value must be `0` or `1`.
+  bool _optionalFlag(JsonObjectValue object, String field, String where) {
+    if (!object.fields.containsKey(field)) return false;
+    return _flagValue(object.fields[field], field, where);
+  }
+
+  bool _flagValue(JsonValue? value, String field, String where) {
     final literal = value is JsonNumberValue ? value.literal : null;
     return switch (literal) {
       '0' => false,

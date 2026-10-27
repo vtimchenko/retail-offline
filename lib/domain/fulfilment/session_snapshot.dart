@@ -24,6 +24,11 @@ class SessionSnapshot {
        exportedOrderIds = List.unmodifiable(exportedOrderIds);
 
   /// Schema version accepted by restore and the snapshot codec.
+  ///
+  /// Excise stamps are an optional field on each reservation. Version 1
+  /// snapshots written before that field existed stay readable: a missing
+  /// list means no stamps. Bumping the version would reject those snapshots,
+  /// because restore accepts only this one.
   static const int supportedSchemaVersion = 1;
 
   static final RegExp _fingerprintPattern = RegExp(r'^[0-9a-f]{64}$');
@@ -77,15 +82,23 @@ class SessionSnapshot {
 ///
 /// [productId] is the exact decimal literal. It is never parsed as a number.
 /// [address] and [serialNumber] keep their exact characters.
+///
+/// [exciseStamps] holds one canonical stamp per reserved unit, in the order
+/// the units were reserved. It is empty for a regular product. Its length
+/// matches [quantity] only after restore accepts an alcohol reservation.
 @immutable
 class SnapshotReservation {
   /// Creates one reservation entry without checking it against a dataset.
+  ///
+  /// [exciseStamps] is kept as given. Pass an unmodifiable list when the
+  /// source can still change. An empty list is the legacy shape.
   const SnapshotReservation({
     required this.orderId,
     required this.productId,
     required this.address,
     required this.serialNumber,
     required this.quantity,
+    this.exciseStamps = const [],
   });
 
   /// Dataset `OrderID`.
@@ -103,6 +116,12 @@ class SnapshotReservation {
   /// Reserved units of this slot for this order line.
   final int quantity;
 
+  /// Canonical excise stamps, one per reserved unit, oldest first.
+  ///
+  /// Empty when this slot has no alcohol reservation. Removing one alcohol
+  /// unit drops that unit's stamp and leaves the others in this order.
+  final List<String> exciseStamps;
+
   @override
   bool operator ==(Object other) =>
       other is SnapshotReservation &&
@@ -110,14 +129,21 @@ class SnapshotReservation {
       other.productId == productId &&
       other.address == address &&
       other.serialNumber == serialNumber &&
-      other.quantity == quantity;
+      other.quantity == quantity &&
+      listEquals(other.exciseStamps, exciseStamps);
 
   @override
-  int get hashCode =>
-      Object.hash(orderId, productId, address, serialNumber, quantity);
+  int get hashCode => Object.hash(
+    orderId,
+    productId,
+    address,
+    serialNumber,
+    quantity,
+    Object.hashAll(exciseStamps),
+  );
 
   @override
   String toString() =>
       'SnapshotReservation($orderId, $productId, $address, '
-      '$serialNumber, x$quantity)';
+      '$serialNumber, x$quantity, $exciseStamps)';
 }

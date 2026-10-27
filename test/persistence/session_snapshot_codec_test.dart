@@ -325,6 +325,50 @@ void main() {
       );
     });
   });
+
+  group('excise stamps', () {
+    test('omits an empty stamp list and reads a legacy reservation', () {
+      final legacy = decoded(codec.decode(_golden));
+
+      expect(legacy.reservations.single.exciseStamps, isEmpty);
+      expect(codec.encode(legacy), isNot(contains('exciseStamps')));
+      expect(codec.encode(legacy), _golden);
+    });
+
+    test('round-trips stamps and rejects a non-string entry', () {
+      final snapshot = SessionSnapshot(
+        schemaVersion: 1,
+        datasetFingerprint: fingerprint,
+        reservations: const [
+          SnapshotReservation(
+            orderId: 'ORD-1',
+            productId: bigProductId,
+            address: 'A-01',
+            serialNumber: 'SN-1',
+            quantity: 2,
+            exciseStamps: ['QWER123456', 'ASDF654321'],
+          ),
+        ],
+        issuedOrderIds: const [],
+        exportedOrderIds: const [],
+      );
+
+      final encoded = codec.encode(snapshot);
+      expect(encoded, contains('"exciseStamps"'));
+      expect(encoded, contains('"QWER123456"'));
+      expect(decoded(codec.decode(encoded)), snapshot);
+      expect(
+        reason(
+          codec.decode(_reservation(extra: '"exciseStamps": "QWER123456"')),
+        ),
+        SnapshotDecodeReason.malformedStructure,
+      );
+      expect(
+        reason(codec.decode(_reservation(extra: '"exciseStamps": [1]'))),
+        SnapshotDecodeReason.malformedStructure,
+      );
+    });
+  });
 }
 
 SessionSnapshot decoded(SnapshotDecodeResult result) {

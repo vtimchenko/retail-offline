@@ -180,6 +180,7 @@ final class FulfilmentUiController extends ChangeNotifier {
     required String address,
     required String serialNumber,
     required int quantity,
+    List<String> exciseStamps = const [],
   }) {
     return _mutate(
       () => coordinator.application.reserve(
@@ -188,6 +189,7 @@ final class FulfilmentUiController extends ChangeNotifier {
         address: address,
         serialNumber: serialNumber,
         quantity: quantity,
+        exciseStamps: exciseStamps,
       ),
     );
   }
@@ -210,6 +212,28 @@ final class FulfilmentUiController extends ChangeNotifier {
         address: address,
         serialNumber: serialNumber,
         quantity: quantity,
+      ),
+    );
+  }
+
+  /// Removes one alcohol unit when the phase is [FulfilmentUiPhase.ready].
+  ///
+  /// Returns `null` when the command is not dispatched. Otherwise returns
+  /// the application's result unchanged. A blocked result is not retried.
+  Future<FulfilmentCommandResult<RemoveUnitsResult>?> removeAlcoholUnit({
+    required String orderId,
+    required String productId,
+    required String address,
+    required String serialNumber,
+    required String exciseStamp,
+  }) {
+    return _mutate(
+      () => coordinator.application.removeAlcoholUnit(
+        orderId: orderId,
+        productId: productId,
+        address: address,
+        serialNumber: serialNumber,
+        exciseStamp: exciseStamp,
       ),
     );
   }
